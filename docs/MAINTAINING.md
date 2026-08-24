@@ -100,6 +100,7 @@ Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通�
 - `tests/windows-e2e.ps1` 必须带 UTF-8 BOM 存盘:PS5.1 对无 BOM 文件按 ANSI 解析,中文注释直接语法错误。
 - `/plugins` 面板(TUI)的更新提示**只由官方市场目录驱动**(2026-08-15 对照 MoonshotAI/kimi-code 源码逐行确认):Installed 页徽标 = 市场目录条目版本 vs 已装 manifest 版本,按 plugin id 匹配(`plugins-selector.ts installedUpdateStatus`,不查安装来源);主动通知仅官方插件(`plugin-update-notifier.ts`,GitHub 安装被 `isOfficialPluginInstall` 明确排除)。不在目录里的 GitHub 源插件**永远不会**有 TUI 更新提示——与 Release、会话缓存、R 刷新、重启均无关。`manager.checkUpdates()` 的 GitHub release/branch/SHA 比对只经 kap-server REST 服务 web UI,TUI 从不调用。目录在 `https://code.kimi.com/kimi-code/plugins/marketplace.json`(官方维护,GitHub 源 curated 条目的版本由 `withLatestVersions` 按最新 Release 运行时解析)。对照组:superpowers 在 Curated 目录所以提示正常;本插件不在目录,出路是申请进 Curated 市场,或用户手动重装升级。
 - 缓存 schema 变更要**三处同步**:`statusline.py`、`tests/test_regressions.py`、`tests/windows-e2e.ps1` 的 C 段断言(v1.3.2 漏改 ps1 的 `$d.sess` 旧 schema 断言,windows CI 当场红;macOS/ubuntu 不跑该脚本所以没拦住)。另外 Edit 类工具改 ps1 会**吃掉 UTF-8 BOM**,改完必须 `head -c 3` 验证 `ef bb bf`,丢了要补回。
+- 新会话快照时序:全新会话未发首条消息前,stdin 快照的 `maxContextTokens` 仍是默认值 262144(显示 256K),选了 1M 模型也要等对话真正开始才变 1048576——状态栏只是忠实渲染 CLI 给的值,首屏短暂显示 256K 属 CLI 侧行为,不是插件 bug(2026-08-24 真机确认,CLI 0.38.0)。
 
 ## 九、路线图(想法池)
 
