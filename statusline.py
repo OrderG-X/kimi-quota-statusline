@@ -32,8 +32,38 @@ MAX_CACHE_SESSIONS = 8  # 缓存里会话条目的上限,按最近活跃裁剪,�
 # 官方额度接口(源码 packages/oauth/src/managed-usage.ts):GET {base}/usages,Bearer 认证
 # 返回 usage(周配额)+ limits[](5h 等窗口)+ boosterWallet;used/limit 为百分制字符串
 USAGES_URL = 'https://api.kimi.com/coding/v1/usages'
-CRED_FILE = os.path.join(HOME, 'credentials', 'kimi-code.json')
+CRED_DIR = os.path.join(HOME, 'credentials')
+CRED_FILE = os.path.join(CRED_DIR, 'kimi-code.json')  # 国内版默认槽位(无 hash 老文件名)
+CONFIG_FILE = os.path.join(HOME, 'config.toml')
 OFFICIAL_FRESH_S = 600  # 官方数据 10 分钟内为新鲜;过期压暗加 ~ 标记,不再回退本地折算
+
+
+def resolve_official_endpoint():
+    """双 OAuth(CLI 0.38.0+):凭据槽位与 usages 端点跟随 config.toml 的当前登录环境。
+
+    登录国际版(kimi.ai)后凭据在 kimi-code-env-<hash>.json、端点是 api.kimi.ai,
+    都写在 config.toml 的 [providers."managed:kimi-code"] 里;读不到配置(老版本
+    CLI)回退国内默认槽位。Python 3.9 无 tomllib,这里只按行解析 CLI 写出的固定形态。
+    """
+    name, url = None, None
+    try:
+        section = ''
+        with open(CONFIG_FILE, encoding='utf-8', errors='replace') as f:
+            for raw in f:
+                line = raw.strip()
+                if line.startswith('['):
+                    section = line.strip('[] ')
+                elif '=' in line and not line.startswith('#'):
+                    k, _, v = line.partition('=')
+                    v = v.strip().strip('"')
+                    if section == 'providers."managed:kimi-code"' and k.strip() == 'base_url' and v:
+                        url = v.rstrip('/') + '/usages'
+                    elif section == 'providers."managed:kimi-code".oauth' and k.strip() == 'key' and v:
+                        name = v.split('/')[-1]  # 剥掉 oauth/ 前缀,即凭据文件名
+    except OSError:
+        pass
+    cred = os.path.join(CRED_DIR, name + '.json') if name else CRED_FILE
+    return cred, (url or USAGES_URL)
 
 # Kimi K3 官方定价(元/百万 token,2026-07 开放平台公示):
 # 输入(未命中缓存)20、输入(缓存命中)2、输出 100;缓存创建按标准输入价计
@@ -117,10 +147,11 @@ def fetch_official(ver=''):
     """拉官方额度:周配额(usage)+ 5h 窗口(limits[])。token 过期或失败返回 None。"""
     import urllib.request
     try:
-        cred = json.load(open(CRED_FILE))
+        cred_file, usages_url = resolve_official_endpoint()
+        cred = json.load(open(cred_file))
         if cred.get('expires_at', 0) < time.time() + 10:
             return None
-        req = urllib.request.Request(USAGES_URL, headers={
+        req = urllib.request.Request(usages_url, headers={
             'Authorization': f"Bearer {cred['access_token']}",
             'Accept': 'application/json',
             'User-Agent': f'kimi-code-cli/{ver}' if ver else 'kimi-code-cli'})

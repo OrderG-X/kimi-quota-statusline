@@ -485,6 +485,60 @@ out_legacy = render({'ts': now, 'sess': {'id': 'sess_old', 'tokens': 5000, 'cost
                                          'out': 0, 't0': None, 't1': None}}, 'sess_old')
 check('旧版缓存 schema:渲染兼容单槽位', '5.0K' in out_legacy)
 
+# ---------- 双 OAuth(0.38.0+):logout/login 切环境后,凭据与端点跟随 config.toml ----------
+# 事故原型:凭据写死 kimi-code.json 老槽位,国际版登录后凭据在 kimi-code-env-<hash>.json,
+# fetch_official 读不到 → 一直显示缓存里旧账号额度
+tmp_dual = tempfile.mkdtemp()
+_cfg = os.path.join(tmp_dual, 'config.toml')
+with open(_cfg, 'w') as f:
+    f.write('[providers."managed:kimi-code"]\n'
+            'base_url = "https://api.kimi.ai/coding/v1"\n\n'
+            '[providers."managed:kimi-code".oauth]\n'
+            'key = "oauth/kimi-code-env-abc123"\n')
+_cred_dir = os.path.join(tmp_dual, 'credentials')
+os.mkdir(_cred_dir)
+json.dump({'access_token': 'TOK_INTL', 'expires_at': time.time() + 600},
+          open(os.path.join(_cred_dir, 'kimi-code-env-abc123.json'), 'w'))
+json.dump({'access_token': 'TOK_LEGACY', 'expires_at': time.time() + 600},
+          open(os.path.join(_cred_dir, 'kimi-code.json'), 'w'))  # 老槽位也在,证明不读错
+
+_old_cfg, _old_cdir = statusline.CONFIG_FILE, statusline.CRED_DIR
+statusline.CONFIG_FILE, statusline.CRED_DIR = _cfg, _cred_dir
+_seen = {}
+import urllib.request as _ur
+class _Resp:
+    def read(self):
+        return json.dumps({'usage': {'limit': '100', 'used': '5', 'resetTime': 'x'},
+                           'limits': [{'window': {'duration': 300, 'timeUnit': 'TIME_UNIT_MINUTE'},
+                                       'detail': {'limit': '100', 'used': '23', 'resetTime': 'y'}}]}).encode()
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+def _fake_urlopen(req, timeout=0):
+    _seen['url'] = req.full_url
+    _seen['auth'] = req.headers.get('Authorization')
+    return _Resp()
+_old_urlopen = _ur.urlopen
+_ur.urlopen = _fake_urlopen
+try:
+    _off = statusline.fetch_official('test')
+finally:
+    _ur.urlopen = _old_urlopen
+    statusline.CONFIG_FILE, statusline.CRED_DIR = _old_cfg, _old_cdir
+check('双 OAuth:跟随 config.toml 选中国际版端点', _seen.get('url') == 'https://api.kimi.ai/coding/v1/usages')
+check('双 OAuth:读 env 凭据而非老槽位', _seen.get('auth') == 'Bearer TOK_INTL')
+check('双 OAuth:额度解析正常', bool(_off) and _off.get('h5_used') == 23.0 and _off.get('wk_used') == 5.0)
+
+# 无 config.toml(老版本 CLI)回退国内默认槽位
+_old_cfg = statusline.CONFIG_FILE
+statusline.CONFIG_FILE = os.path.join(tmp_dual, '不存在.toml')
+try:
+    _cred, _url = statusline.resolve_official_endpoint()
+finally:
+    statusline.CONFIG_FILE = _old_cfg
+check('双 OAuth:缺配置回退老凭据+官方域名',
+      _cred.endswith(os.path.join('credentials', 'kimi-code.json'))
+      and _url == 'https://api.kimi.com/coding/v1/usages')
+
 print()
 if FAILED:
     print(f'{len(FAILED)} 个用例失败')

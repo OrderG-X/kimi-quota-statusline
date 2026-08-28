@@ -38,7 +38,7 @@ Kimi Code CLI(≥0.30.0)的底部状态栏插件。本体只有一个文件:`sta
    - `config.update` / `llm.request` → 当前思考强度(`thinkingEffort`)
    - `swarm_mode.enter` / `swarm_mode.exit` → swarm 状态与进入时间(动效触发)
    - `usage.record` → token 消耗:`usage.{inputOther, output, inputCacheRead, inputCacheCreation}`,时间字段 `time`(epoch ms);TPS 由最近 60s 窗口(`TPS_WINDOW_S`)的 usage.record 聚合,自尾向前扫、跨出窗口即停(上限 2MB),空闲为 0 隐藏
-3. **官方额度接口**:`GET https://api.kimi.com/coding/v1/usages`,Bearer 用 `~/.kimi-code/credentials/kimi-code.json` 的 `access_token`(15 分钟有效期,CLI 运行时自动续)。返回 `usage`(周配额)+ `limits[]`(5h=300 TIME_UNIT_MINUTE),`used/limit` 为百分制。出处:kimi-code 仓库 `packages/oauth/src/managed-usage.ts`。
+3. **官方额度接口**:`GET {base_url}/usages`,Bearer 用凭据文件的 `access_token`(15 分钟有效期,CLI 运行时自动续)。**双 OAuth(CLI 0.38.0+)**:凭据槽位与 base_url 跟随 `~/.kimi-code/config.toml` 的 `[providers."managed:kimi-code"]`——`oauth.key` 剥掉 `oauth/` 前缀即 `credentials/<名>.json`(国际版 kimi.ai 是 `kimi-code-env-<hash>.json`,国内默认槽位仍是老的 `kimi-code.json`),`base_url` 决定端点域名;读不到配置(老版本 CLI)按国内默认。本脚本 `resolve_official_endpoint()` 按行解析该 TOML(Python 3.9 无 tomllib,只认 CLI 写出的固定形态)。返回 `usage`(周配额)+ `limits[]`(5h=300 TIME_UNIT_MINUTE),`used/limit` 为百分制。出处:kimi-code 仓库 `packages/oauth/src/managed-kimi-code.ts` + `managed-usage.ts`。
 4. **额度显示口径**:仅用官方接口数据;超过 `OFFICIAL_FRESH_S`(600s)未更新压暗加 `~` 过期标记,从未拉到则不显示。本地 token 折算回退已于 v1.1.2 移除——与官方窗口非线性,校准漂移曾致 5h 误显 90%+(2026-08-09 用户报告),不要再加回来。
 
 ## 四、关键机制
@@ -101,6 +101,7 @@ Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通�
 - `/plugins` 面板(TUI)的更新提示**只由官方市场目录驱动**(2026-08-15 对照 MoonshotAI/kimi-code 源码逐行确认):Installed 页徽标 = 市场目录条目版本 vs 已装 manifest 版本,按 plugin id 匹配(`plugins-selector.ts installedUpdateStatus`,不查安装来源);主动通知仅官方插件(`plugin-update-notifier.ts`,GitHub 安装被 `isOfficialPluginInstall` 明确排除)。不在目录里的 GitHub 源插件**永远不会**有 TUI 更新提示——与 Release、会话缓存、R 刷新、重启均无关。`manager.checkUpdates()` 的 GitHub release/branch/SHA 比对只经 kap-server REST 服务 web UI,TUI 从不调用。目录在 `https://code.kimi.com/kimi-code/plugins/marketplace.json`(官方维护,GitHub 源 curated 条目的版本由 `withLatestVersions` 按最新 Release 运行时解析)。对照组:superpowers 在 Curated 目录所以提示正常;本插件不在目录,出路是申请进 Curated 市场,或用户手动重装升级。
 - 缓存 schema 变更要**三处同步**:`statusline.py`、`tests/test_regressions.py`、`tests/windows-e2e.ps1` 的 C 段断言(v1.3.2 漏改 ps1 的 `$d.sess` 旧 schema 断言,windows CI 当场红;macOS/ubuntu 不跑该脚本所以没拦住)。另外 Edit 类工具改 ps1 会**吃掉 UTF-8 BOM**,改完必须 `head -c 3` 验证 `ef bb bf`,丢了要补回。
 - 新会话快照时序:全新会话未发首条消息前,stdin 快照的 `maxContextTokens` 仍是默认值 262144(显示 256K),选了 1M 模型也要等对话真正开始才变 1048576——状态栏只是忠实渲染 CLI 给的值,首屏短暂显示 256K 属 CLI 侧行为,不是插件 bug(2026-08-24 真机确认,CLI 0.38.0)。
+- 凭据文件写死老槽位:0.38.0 双 OAuth 起凭据按 (oauthHost, baseUrl) 的 sha256 前 16 位分槽位(`kimi-code-env-<hash>.json`),国际版登录后老的 `kimi-code.json` 不复存在,写死它会导致额度拉取静默失败、一直显示缓存里上一个账号的数据;槽位与端点必须从 config.toml 解析(v1.3.3 修复,回归锁死)。另:`api.kimi.ai` 裸请求(无 UA)会 403,带 `kimi-code-cli` UA 正常。
 
 ## 九、路线图(想法池)
 

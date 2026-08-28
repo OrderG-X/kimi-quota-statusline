@@ -2,6 +2,11 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [1.3.3] - 2026-08-28
+
+### Fixed
+- 切账号(logout/login)后 5h/7d 额度仍显示旧账号:CLI 0.38.0 双 OAuth(kimi.com/kimi.ai)把凭据改为按环境分槽位(`kimi-code-env-<hash>.json`),国际版端点在 `api.kimi.ai`,而脚本写死老凭据文件与 `api.kimi.com`,国际版登录后拉取失败、一直显示缓存里旧账号额度;现凭据槽位与端点跟随 `config.toml` 的 `[providers."managed:kimi-code"]`(`oauth.key` 定凭据、`base_url` 定端点,与 CLI 源码 `resolveKimiCodeRuntimeAuth` 同口径),读不到配置回退国内默认槽位;回归 +4(总 54)
+
 ## [1.3.2] - 2026-08-16
 
 ### Fixed
