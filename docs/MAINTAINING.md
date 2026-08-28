@@ -76,7 +76,7 @@ time (cat ~/.kimi-code/statusline-stdin.json | python3 statusline.py > /dev/null
 
 ## 七、CLI 更新后的兼容性巡检
 
-Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通过则无需改动,有失败项按「三、数据通道」定位修复。最近基线:CLI 0.38.0(2026-08-21 全部通过;跨 minor,0.37.2→0.38.0 changelog 无 status_line/stdin/usages/wire 相关条目,仅官方 Datasource 插件扩数据源一条无关变更;当日真机 0.38.0 会话快照 10 字段与消费契约逐项吻合,实测渲染权限/模型/上下文/swarm/5h·7d 额度/git/token·金额·TPS 全出,wire usage.record 聚合正常)。上一基线:CLI 0.37.2(2026-08-19 全部通过;跨 minor,changelog 无相关条目,仅插件 MCP server 与 web UI footer 各一条无关变更;快照字段与渲染当日真机确认)。
+Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通过则无需改动,有失败项按「三、数据通道」定位修复。最近基线:CLI 0.39.0(2026-08-28 全部通过;跨 minor,0.38.0→0.39.0 changelog 无 status_line/stdin/usages/wire 相关条目,仅 CLI 自带 /usage context bar 显示修复与插件市场 UI 条目,均无关;当日真机 0.39.0 会话快照 10 字段与消费契约逐项吻合,实测渲染全部分段正常)。上一基线:CLI 0.38.0(2026-08-21 全部通过;跨 minor,changelog 无相关条目,仅官方 Datasource 插件扩数据源一条无关变更;快照 10 字段与渲染当日真机确认)。
 
 1. **官方 changelog 对照**:https://www.kimi.com/code/docs/en/kimi-code-cli/release-notes/changelog.html ,搜 status_line / plugin / wire / usages 相关条目。
 2. **stdin 快照字段**:`cat ~/.kimi-code/statusline-stdin.json` —— 应含 `model, cwd, gitBranch, permissionMode, planMode, contextUsage, contextTokens, maxContextTokens, sessionId, version`。
