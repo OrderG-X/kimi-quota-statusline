@@ -4,7 +4,7 @@
 stdin 收到 CLI 的 JSON 快照,stdout 替换底部状态栏(支持两行)。
 运行预算 300ms,每秒最多一次 —— token 统计走缓存,重活由后台 detached 进程刷新。
 
-第一行:权限 · 模型·强度 [上下文规格] · swarm · 5h/7d 额度条(官方接口) · 会话 token/金额/TPS · git · 目录
+第一行:权限 · 模型·强度 [上下文规格] · swarm · ⚙ 后台任务(running 才显示,OSC 8 可点击) · 5h/7d 额度条(官方接口) · 会话 token/金额/TPS · git · 目录
 - 5h/7d 额度:仅官方 /usages 接口;过期压暗加 ~ 标记,从未拉到则不显示
   (本地 token 折算与官方窗口非线性、校准持续漂移,已于 v1.1.2 移除)
 - 本会话 token/金额:仅当前会话 wire.jsonl 的 usage.record 聚合
@@ -80,6 +80,7 @@ BRAND = (0x4F, 0xA8, 0xFF)      # Kimi Code 官方主题 primary #4FA8FF
 BRAND_DIM = (0x24, 0x4E, 0x80)
 BURST_S = 8.0                   # 扫描特效持续秒数
 ANSI_RE = __import__('re').compile(r'\033\[[0-9;]*m')
+OSC_RE = __import__('re').compile(r'\033\][^\a]*\a')  # OSC 8 超链接等(BEL 结尾),动效前要剥掉
 
 
 def brand_fg(text, rgb, *extra):
@@ -440,6 +441,77 @@ def live_tps(session_id, max_blocks=4, pair_n=3):
     return sum(speeds) / len(speeds) if speeds else 0.0
 
 
+# ---------- 后台任务段(tasks/*.json → ⚙ N + OSC 8 看板链接) ----------
+TASKS_HTML = os.path.join(HOME, 'statusline-tasks.html')
+
+
+def session_tasks(sid):
+    """当前会话的后台任务记录(bash/agent/question 都在 main agent 的 tasks/ 下,与 /tasks 面板同源)。"""
+    out = []
+    if not sid:
+        return out
+    for p in glob.glob(os.path.join(SESSIONS, '*', sid, 'agents', 'main', 'tasks', '*.json')):
+        try:
+            with open(p, encoding='utf-8', errors='replace') as f:
+                t = json.load(f)
+        except Exception:
+            continue
+        if isinstance(t, dict) and t.get('taskId'):
+            t['_log'] = os.path.join(os.path.dirname(p), str(t['taskId']), 'output.log')
+            out.append(t)
+    return out
+
+
+def _fmt_dur(ms):
+    s = max(0, int(ms / 1000))
+    return f'{s // 60}m{s % 60:02d}s' if s >= 60 else f'{s}s'
+
+
+def render_tasks_html(tasks):
+    """后台任务看板(点状态栏 ⚙ 段在浏览器打开);内容不变不重写,避免每秒 IO。"""
+    import html as _h
+    now_ms = time.time() * 1000
+    st_color = {'running': '#4fa8ff', 'completed': '#3fb950'}
+    rows = []
+    for t in sorted(tasks, key=lambda x: x.get('startedAt', 0), reverse=True)[:30]:
+        st = str(t.get('status', ''))
+        color = st_color.get(st, '#f85149' if st in ('failed', 'timed_out', 'killed') else '#8b949e')
+        desc = _h.escape(str(t.get('description') or t.get('command') or t['taskId']))[:120]
+        dur = _fmt_dur((t.get('endedAt') or now_ms) - t.get('startedAt', 0))
+        log = _h.escape('file://' + t.get('_log', ''), quote=True)
+        rows.append(f'<tr><td style="color:{color}">{_h.escape(st)}</td>'
+                    f'<td>{_h.escape(str(t.get("kind", "")))}</td><td>{desc}</td>'
+                    f'<td>{dur}</td><td><a href="{log}">output</a></td></tr>')
+    n_run = sum(1 for t in tasks if t.get('status') == 'running')
+    doc = ('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="2">'
+           '<title>后台任务 · kimi-quota-statusline</title>'
+           '<style>body{background:#0d1117;color:#c9d1d9;font:14px/1.6 -apple-system,monospace;'
+           'padding:20px;max-width:900px;margin:auto}table{border-collapse:collapse;width:100%}'
+           'td{padding:4px 10px;border-bottom:1px solid #21262d}a{color:#4fa8ff}</style>'
+           f'<h3>⚙ 后台任务({n_run} running / {len(tasks)} total)</h3><table>' + ''.join(rows) + '</table>')
+    try:
+        with open(TASKS_HTML, encoding='utf-8') as f:
+            if f.read() == doc:
+                return
+    except OSError:
+        pass
+    try:
+        with open(TASKS_HTML, 'w', encoding='utf-8') as f:
+            f.write(doc)
+    except OSError:
+        pass
+
+
+def task_segment(tasks):
+    """后台任务段:有 running 才显示;整段 OSC 8 超链接到本地看板(TUI 渲染链零剥离,可点击)。"""
+    n = sum(1 for t in tasks if t.get('status') == 'running')
+    if not n:
+        return None
+    render_tasks_html(tasks)
+    label = c(f'⚙ {n}', YELLOW, BOLD)
+    return f'\033]8;;file://{TASKS_HTML}\a{label}\033]8;;\a'
+
+
 def pick(d, *keys, default=''):
     for k in keys:
         v = d.get(k)
@@ -494,6 +566,11 @@ def main():
     # swarm 静态标记(品牌蓝);进入瞬间的扫描动效在输出阶段处理
     if swarm:
         line1.append(brand_fg('swarm', BRAND, BOLD))
+
+    # 后台任务段:当前会话有 running 的任务/子 agent 才显示;点击打开本地看板
+    tseg = task_segment(session_tasks(sid))
+    if tseg:
+        line1.append(tseg)
 
     # 上下文条:原生 UI(line 2)已有,这里不重复
 
@@ -554,7 +631,8 @@ def main():
     elapsed = time.time() - enter_ts if (swarm and enter_ts) else 1e9
     if swarm and USE_ANSI and elapsed < BURST_S:
         # 进入 swarm 的前几秒:品牌蓝水波自 swarm 处向两侧荡开,随后收敛为普通分段色
-        print(brand_flow(ANSI_RE.sub('', out), elapsed))
+        # (OSC 8 超链接也要剥掉,否则当可见字符参与水波计算会把动画冲乱)
+        print(brand_flow(OSC_RE.sub('', ANSI_RE.sub('', out)), elapsed))
     else:
         print(out)
 

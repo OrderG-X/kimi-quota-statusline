@@ -539,6 +539,48 @@ check('双 OAuth:缺配置回退老凭据+官方域名',
       _cred.endswith(os.path.join('credentials', 'kimi-code.json'))
       and _url == 'https://api.kimi.com/coding/v1/usages')
 
+# ---------- 后台任务段:当前会话有 running 任务/子 agent 才显示,⚙ N 可点击打开看板 ----------
+tmp_bg = tempfile.mkdtemp()
+statusline.SESSIONS = tmp_bg
+statusline.TASKS_HTML = os.path.join(tmp_bg, 'board.html')
+sid_bg = 'sess_bg'
+_tdir = os.path.join(tmp_bg, 'wd_t', sid_bg, 'agents', 'main', 'tasks')
+os.makedirs(_tdir)
+
+
+def _mk_task(tid, status, desc, started=1000, ended=None, kind='process'):
+    t = {'taskId': tid, 'status': status, 'description': desc, 'kind': kind,
+         'startedAt': started, 'detached': True}
+    if ended:
+        t['endedAt'] = ended
+    json.dump(t, open(os.path.join(_tdir, tid + '.json'), 'w'))
+    os.makedirs(os.path.join(_tdir, tid), exist_ok=True)
+    open(os.path.join(_tdir, tid, 'output.log'), 'w').write('log of ' + tid)
+
+
+_mk_task('bash-run1', 'running', '跑着呢 1', started=int(now * 1000) - 60000)
+_mk_task('agent-run2', 'running', '跑着呢 2', started=int(now * 1000) - 30000, kind='agent')
+_mk_task('bash-done3', 'completed', '已完工', started=1000, ended=2000)
+
+out = render({'ts': now}, sid_bg)
+check('后台任务:有 running 时显示计数(2 跑 1 完)', '⚙ 2' in out)
+check('后台任务:段带 OSC 8 看板链接', ']8;;file://' in out and 'board.html' in out)
+_board = open(statusline.TASKS_HTML, encoding='utf-8').read()
+check('后台任务:看板含任务描述与 output 链接',
+      '跑着呢 1' in _board and '已完工' in _board and 'output.log' in _board)
+
+# 全部结束后段隐藏
+import shutil
+shutil.rmtree(_tdir)
+os.makedirs(_tdir)
+_mk_task('bash-done4', 'completed', '旧任务', started=1000, ended=2000)
+out = render({'ts': now}, sid_bg)
+check('后台任务:无 running 时段隐藏', '⚙' not in out)
+
+# swarm 动效通道:OSC 8 必须剥除(否则水波把超链接序列当可见字符,动画被冲乱)
+check('后台任务:OSC 8 剥除后只剩可见文字',
+      statusline.OSC_RE.sub('', '\033]8;;file://x\a⚙ 2\033]8;;\a') == '⚙ 2')
+
 print()
 if FAILED:
     print(f'{len(FAILED)} 个用例失败')

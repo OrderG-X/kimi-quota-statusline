@@ -30,6 +30,7 @@ Kimi Code CLI 状态栏增强插件（statusline plugin)：**额度、消耗、s
 - ✅ 本会话 token、估算金额与**实时 TPS**（最近数次请求的生成速度均值，空闲保留最后值）
 - ✅ 权限模式 / 模型·思考强度 / git 分支 / 项目目录
 - ✅ swarm 模式品牌蓝水波动效（约 8 秒）
+- ✅ **后台任务段**：有 running 的后台任务/子 agent 时显示 `⚙ N`，点击在浏览器打开本地任务看板（状态 + output 链接，2s 自刷）
 - ⚡ 单次运行 < 50ms（token 统计走缓存,TPS 走尾部限量扫描,300ms 预算内）
 
 ## 快速安装
@@ -118,6 +119,7 @@ When **swarm mode** is entered, a brand-blue (`#4FA8FF`) water ripple spreads ou
 - ✅ Current-session tokens, estimated cost, and **live TPS** (mean generation speed of the last few requests, keeps last value when idle)
 - ✅ Permission mode / model · thinking effort / git branch / directory
 - ✅ Brand-blue water-ripple burst on swarm mode (~8 s)
+- ✅ **Background tasks**: shows `⚙ N` while background tasks/sub-agents are running — click to open a local task board in the browser (status + output links, 2 s auto-refresh)
 - ⚡ Runs in < 50 ms (token stats served from cache, within the 300 ms budget)
 
 ## Quick install

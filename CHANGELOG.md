@@ -2,6 +2,11 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [1.4.0] - 2026-08-30
+
+### Added
+- **后台任务段**:当前会话有 running 的后台任务/子 agent 时,状态栏 swarm 标记后显示可点击的 `⚙ N`(OSC 8 超链接;上游源码逐行确认渲染链零剥离、宽度零占、截断自动补关闭符、全屏模式点击走 openUrl);点击在浏览器打开本地任务看板(状态/描述/耗时 + output.log 链接,2s 自动刷新,内容不变零重写),与 `/tasks` 面板同源(会话 `tasks/*.json`);无 running 时段隐藏不占位;swarm 动效通道同步剥除 OSC 8 防水波串乱;回归 +5(总 59)
+
 ## [1.3.3] - 2026-08-28
 
 ### Fixed

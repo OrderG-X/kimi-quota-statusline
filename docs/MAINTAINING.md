@@ -22,7 +22,7 @@ Kimi Code CLI(≥0.30.0)的底部状态栏插件。本体只有一个文件:`sta
 | `commands/*.md` | 插件斜杠命令(`/kimi-quota-statusline:install|uninstall`),body 是给 Agent 的提示词 |
 | `README.md` / `README.zh-CN.md` | 首页 README.md 为中文内联 + 英文 `<details>` 折叠;zh-CN 为独立中文文件;**任何行为变化必须三处同步(README.md 中英两段 + zh-CN)** |
 | `CHANGELOG.md` | Keep a Changelog 格式 |
-| `tests/test_regressions.py` | 回归测试(无框架):额度口径 / swarm 分块扫描 / TPS 窗口聚合 / 多会话缓存隔离 / 双 OAuth 凭据槽位与端点解析 / Windows 适配(detached 参数、stdio UTF-8、安装器行级匹配、doctor OSError 兜底、nt 命令形态)共 54 例,`python3 tests/test_regressions.py` |
+| `tests/test_regressions.py` | 回归测试(无框架):额度口径 / swarm 分块扫描 / TPS 窗口聚合 / 多会话缓存隔离 / 双 OAuth 凭据槽位与端点解析 / 后台任务段(计数/OSC 8 链接/看板/隐藏/动效剥除) / Windows 适配(detached 参数、stdio UTF-8、安装器行级匹配、doctor OSError 兜底、nt 命令形态)共 59 例,`python3 tests/test_regressions.py` |
 | `tests/windows-e2e.ps1` | Windows 真机验收(PowerShell):真实 Node spawn 复刻 TUI 的 cmd /d /s /c 链路 + 元字符路径压测 + detached 不闪窗 + UTF-8;自动项已入 CI windows job,手动项(真实 TUI 肉眼)见脚本尾部清单 |
 | `.github/workflows/ci.yml` | 三平台 CI(windows / ubuntu / macos):回归 + 中文路径冒烟渲染 + 安装/卸载往返 |
 | `assets/` | `hero.svg`(README 顶部横幅:手写 SVG + SMIL 动画,品牌蓝渐变标题 + 三句打字机标语,改文案直接编辑;本地预览用 Chrome headless 截图)+ 演示素材 `statusline.png` / `swarm.gif` + 生成器 `make_demo.py`(依赖 Pillow,由 statusline.py 真实渲染逐帧生成;展示变化后重新跑一遍即可) |
@@ -40,6 +40,7 @@ Kimi Code CLI(≥0.30.0)的底部状态栏插件。本体只有一个文件:`sta
    - `usage.record` → token 消耗:`usage.{inputOther, output, inputCacheRead, inputCacheCreation}`,时间字段 `time`(epoch ms);TPS 由最近 60s 窗口(`TPS_WINDOW_S`)的 usage.record 聚合,自尾向前扫、跨出窗口即停(上限 2MB),空闲为 0 隐藏
 3. **官方额度接口**:`GET {base_url}/usages`,Bearer 用凭据文件的 `access_token`(15 分钟有效期,CLI 运行时自动续)。**双 OAuth(CLI 0.38.0+)**:凭据槽位与 base_url 跟随 `~/.kimi-code/config.toml` 的 `[providers."managed:kimi-code"]`——`oauth.key` 剥掉 `oauth/` 前缀即 `credentials/<名>.json`(国际版 kimi.ai 是 `kimi-code-env-<hash>.json`,国内默认槽位仍是老的 `kimi-code.json`),`base_url` 决定端点域名;读不到配置(老版本 CLI)按国内默认。本脚本 `resolve_official_endpoint()` 按行解析该 TOML(Python 3.9 无 tomllib,只认 CLI 写出的固定形态)。返回 `usage`(周配额)+ `limits[]`(5h=300 TIME_UNIT_MINUTE),`used/limit` 为百分制。出处:kimi-code 仓库 `packages/oauth/src/managed-kimi-code.ts` + `managed-usage.ts`。
 4. **额度显示口径**:仅用官方接口数据;超过 `OFFICIAL_FRESH_S`(600s)未更新压暗加 `~` 过期标记,从未拉到则不显示。本地 token 折算回退已于 v1.1.2 移除——与官方窗口非线性,校准漂移曾致 5h 误显 90%+(2026-08-09 用户报告),不要再加回来。
+5. **后台任务**(v1.4.0 新增):`~/.kimi-code/sessions/*/<sessionId>/agents/main/tasks/<taskId>.json`,与 `/tasks` 面板同源;字段 `taskId/kind(process|agent|question)/status/description/startedAt/endedAt`,输出在 `<taskId>/output.log`。有 running 才显示 `⚙ N` 段;段体包 OSC 8 超链接(`\033]8;;file://…\a…\033]8;;\a`)指向 `~/.kimi-code/statusline-tasks.html` 看板(内容不变零重写)。OSC 8 在 TUI 渲染链全程放行(零宽度、截断自动补关闭符、全屏模式点击走 openUrl),出处:`apps/kimi-code/src/tui/utils/status-line-command.ts` + `packages/pi-tui/src/utils.ts` + `tui-alt-screen.ts`。注意:swarm 动效通道必须剥 OSC 8(`OSC_RE`),否则当可见字符冲乱水波。
 
 ## 四、关键机制
 
