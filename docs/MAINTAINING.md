@@ -22,7 +22,7 @@ Kimi Code CLI(≥0.30.0)的底部状态栏插件。本体只有一个文件:`sta
 | `commands/*.md` | 插件斜杠命令(`/kimi-quota-statusline:install|uninstall`),body 是给 Agent 的提示词 |
 | `README.md` / `README.zh-CN.md` | 首页 README.md 为中文内联 + 英文 `<details>` 折叠;zh-CN 为独立中文文件;**任何行为变化必须三处同步(README.md 中英两段 + zh-CN)** |
 | `CHANGELOG.md` | Keep a Changelog 格式 |
-| `tests/test_regressions.py` | 回归测试(无框架):额度口径 / swarm 分块扫描 / TPS 窗口聚合 / 多会话缓存隔离 / Windows 适配(detached 参数、stdio UTF-8、安装器行级匹配、doctor OSError 兜底、nt 命令形态)共 50 例,`python3 tests/test_regressions.py` |
+| `tests/test_regressions.py` | 回归测试(无框架):额度口径 / swarm 分块扫描 / TPS 窗口聚合 / 多会话缓存隔离 / 双 OAuth 凭据槽位与端点解析 / Windows 适配(detached 参数、stdio UTF-8、安装器行级匹配、doctor OSError 兜底、nt 命令形态)共 54 例,`python3 tests/test_regressions.py` |
 | `tests/windows-e2e.ps1` | Windows 真机验收(PowerShell):真实 Node spawn 复刻 TUI 的 cmd /d /s /c 链路 + 元字符路径压测 + detached 不闪窗 + UTF-8;自动项已入 CI windows job,手动项(真实 TUI 肉眼)见脚本尾部清单 |
 | `.github/workflows/ci.yml` | 三平台 CI(windows / ubuntu / macos):回归 + 中文路径冒烟渲染 + 安装/卸载往返 |
 | `assets/` | `hero.svg`(README 顶部横幅:手写 SVG + SMIL 动画,品牌蓝渐变标题 + 三句打字机标语,改文案直接编辑;本地预览用 Chrome headless 截图)+ 演示素材 `statusline.png` / `swarm.gif` + 生成器 `make_demo.py`(依赖 Pillow,由 statusline.py 真实渲染逐帧生成;展示变化后重新跑一遍即可) |
@@ -76,7 +76,7 @@ time (cat ~/.kimi-code/statusline-stdin.json | python3 statusline.py > /dev/null
 
 ## 七、CLI 更新后的兼容性巡检
 
-Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通过则无需改动,有失败项按「三、数据通道」定位修复。最近基线:CLI 0.39.0(2026-08-28 全部通过;跨 minor,0.38.0→0.39.0 changelog 无 status_line/stdin/usages/wire 相关条目,仅 CLI 自带 /usage context bar 显示修复与插件市场 UI 条目,均无关;当日真机 0.39.0 会话快照 10 字段与消费契约逐项吻合,实测渲染全部分段正常)。上一基线:CLI 0.38.0(2026-08-21 全部通过;跨 minor,changelog 无相关条目,仅官方 Datasource 插件扩数据源一条无关变更;快照 10 字段与渲染当日真机确认)。
+Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通过则无需改动,有失败项按「三、数据通道」定位修复。最近基线:CLI 0.39.1(2026-08-30 全部通过;patch,变更全是 web 端修复,无 status_line/stdin/usages/wire/oauth 相关条目;当日真机 0.39.1 会话快照 10 字段吻合,渲染与官方额度通道(国内默认槽位回退路径)实测正常)。上一基线:CLI 0.39.0(2026-08-28 全部通过;跨 minor,changelog 无相关条目,仅 CLI 自带 /usage context bar 显示修复与插件市场 UI 条目;快照 10 字段与渲染当日真机确认)。
 
 1. **官方 changelog 对照**:https://www.kimi.com/code/docs/en/kimi-code-cli/release-notes/changelog.html ,搜 status_line / plugin / wire / usages 相关条目。
 2. **stdin 快照字段**:`cat ~/.kimi-code/statusline-stdin.json` —— 应含 `model, cwd, gitBranch, permissionMode, planMode, contextUsage, contextTokens, maxContextTokens, sessionId, version`。
