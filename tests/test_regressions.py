@@ -543,6 +543,7 @@ check('双 OAuth:缺配置回退老凭据+官方域名',
 tmp_bg = tempfile.mkdtemp()
 statusline.SESSIONS = tmp_bg
 statusline.TASKS_HTML = os.path.join(tmp_bg, 'board.html')
+statusline.board_url = lambda: None  # 强制 file:// 回退路径,与本机真实看板服务隔离
 sid_bg = 'sess_bg'
 _tdir = os.path.join(tmp_bg, 'wd_t', sid_bg, 'agents', 'main', 'tasks')
 os.makedirs(_tdir)
@@ -580,6 +581,122 @@ check('后台任务:无 running 时段隐藏', '⚙' not in out)
 # swarm 动效通道:OSC 8 必须剥除(否则水波把超链接序列当可见字符,动画被冲乱)
 check('后台任务:OSC 8 剥除后只剩可见文字',
       statusline.OSC_RE.sub('', '\033]8;;file://x\a⚙ 2\033]8;;\a') == '⚙ 2')
+
+# ---------- 实时任务看板服务(v1.5.0):全会话总览 + 1s 局部刷新 ----------
+tmp_srv = tempfile.mkdtemp()
+statusline.SESSIONS = tmp_srv
+
+
+def _mk_sess_task(wd, sid, tid, status, desc, started, ended=None):
+    td = os.path.join(tmp_srv, wd, sid, 'agents', 'main', 'tasks')
+    os.makedirs(td, exist_ok=True)
+    t = {'taskId': tid, 'status': status, 'description': desc, 'kind': 'process',
+         'startedAt': started, 'detached': True}
+    if ended:
+        t['endedAt'] = ended
+    json.dump(t, open(os.path.join(td, tid + '.json'), 'w'))
+
+
+_mk_sess_task('wd_projA_aaa111', 'sess_A', 'bash-a1', 'completed', 'A 的旧任务', 1000, 2000)
+_mk_sess_task('wd_projA_aaa111', 'sess_A', 'bash-a2', 'running', 'A 在跑', 5000)
+_mk_sess_task('wd_projB_bbb222', 'sess_B', 'bash-b1', 'running', 'B 在跑', 4000)
+
+_pay = statusline.tasks_payload()
+check('看板服务:全会话分组(2 个会话)', len(_pay['sessions']) == 2)
+check('看板服务:每个会话内 running 排最前',
+      all(s['tasks'] and s['tasks'][0]['status'] == 'running' for s in _pay['sessions']))
+check('看板服务:会话标签去掉 wd_ 前缀和 hash 后缀',
+      any(s['label'] == 'projA' for s in _pay['sessions']))
+
+# HTTP 端点(线程内起临时端口,port 0 = 系统分配)
+import threading  # noqa: E402
+import urllib.request  # noqa: E402
+_srv, _port = statusline.start_tasks_server(port=0)
+try:
+    _html = urllib.request.urlopen(f'http://127.0.0.1:{_port}/', timeout=5).read().decode()
+    _data = json.loads(urllib.request.urlopen(f'http://127.0.0.1:{_port}/data', timeout=5).read().decode())
+finally:
+    statusline.stop_tasks_server(_srv)
+check('看板服务:/ 返回带局部刷新 JS 的页面', 'fetch(' in _html and '/data' in _html)
+check('看板服务:/data 返回全会话任务', len(_data.get('sessions', [])) == 2)
+
+# 段链接:服务在线走 http,离线回退 file:// 看板
+statusline.board_url = lambda: 'http://127.0.0.1:18989/'
+_seg = statusline.task_segment([{'taskId': 'x', 'status': 'running', 'startedAt': 1}])
+check('看板服务:段链接走 http 服务', ']8;;http://127.0.0.1:18989/' in _seg)
+statusline.board_url = lambda: None
+_seg2 = statusline.task_segment([{'taskId': 'x', 'status': 'running', 'startedAt': 1}])
+check('看板服务:服务离线回退 file:// 看板', ']8;;file://' in _seg2)
+
+# 真实数据场景:死会话的幽灵 running 不能当真;2h 前的旧完成任务不进看板
+_mk_sess_task('wd_projC_ccc333', 'sess_C', 'bash-ghost', 'running', '幽灵进程', 1000)
+_g = os.path.join(tmp_srv, 'wd_projC_ccc333', 'sess_C', 'agents', 'main', 'tasks', 'bash-ghost.json')
+_t = json.load(open(_g))
+_t['pid'] = 99999999  # 必死的 pid
+json.dump(_t, open(_g, 'w'))
+_mk_sess_task('wd_projC_ccc333', 'sess_C', 'bash-live', 'running', '活进程', 1000)
+_l = os.path.join(tmp_srv, 'wd_projC_ccc333', 'sess_C', 'agents', 'main', 'tasks', 'bash-live.json')
+_t = json.load(open(_l))
+_t['pid'] = os.getpid()  # 活着的 pid
+json.dump(_t, open(_l, 'w'))
+_mk_sess_task('wd_projC_ccc333', 'sess_C', 'bash-old', 'completed', '三小时前',
+              1000, int(now * 1000) - 3 * 3600 * 1000)
+_pay2 = statusline.tasks_payload()
+_c = [s for s in _pay2['sessions'] if s['sid'] == 'sess_C'][0]['tasks']
+_byid = {t['taskId']: t['status'] for t in _c}
+check('看板服务:死 pid 的 running 降级 lost', _byid.get('bash-ghost') == 'lost')
+check('看板服务:活 pid 保持 running', _byid.get('bash-live') == 'running')
+check('看板服务:2h 前的已完成任务不进看板', 'bash-old' not in _byid)
+
+# http→file 被浏览器禁跳:日志改走同源 /log 路由;agent 任务链 wire.jsonl 转录
+_ad = os.path.join(tmp_srv, 'wd_projD_ddd444', 'sess_D', 'agents', 'main', 'tasks')
+os.makedirs(_ad)
+json.dump({'taskId': 'agent-x1', 'status': 'running', 'description': '子代理在跑',
+           'kind': 'agent', 'agentId': 'agent-7', 'startedAt': 6000, 'detached': True},
+          open(os.path.join(_ad, 'agent-x1.json'), 'w'))
+_aw = os.path.join(tmp_srv, 'wd_projD_ddd444', 'sess_D', 'agents', 'agent-7')
+os.makedirs(_aw)
+open(os.path.join(_aw, 'wire.jsonl'), 'w').write('{"type":"x"}\n')
+# bash-a2 的 output.log 要在构建 payload 前就存在(_log_url 只在文件存在时给出)
+_lp = os.path.join(tmp_srv, 'wd_projA_aaa111', 'sess_A', 'agents', 'main', 'tasks', 'bash-a2', 'output.log')
+os.makedirs(os.path.dirname(_lp), exist_ok=True)
+open(_lp, 'w').write('hello log')
+_pay3 = statusline.tasks_payload()
+_ax = [t for s in _pay3['sessions'] for t in s['tasks'] if t['taskId'] == 'agent-x1']
+check('看板服务:agent 任务给 wire 转录链接',
+      bool(_ax) and '/log?p=' in _ax[0].get('_log_url', '') and 'wire.jsonl' in _ax[0]['_log_url'])
+_pa = [t for s in _pay3['sessions'] for t in s['tasks'] if t['taskId'] == 'bash-a2']
+check('看板服务:process 任务给 output 链接', bool(_pa) and '/log?p=' in _pa[0].get('_log_url', ''))
+
+import urllib.parse  # noqa: E402
+import urllib.error  # noqa: E402
+_srv2, _port2 = statusline.start_tasks_server(port=0)
+try:
+    _lp = os.path.join(tmp_srv, 'wd_projA_aaa111', 'sess_A', 'agents', 'main', 'tasks', 'bash-a2', 'output.log')
+    os.makedirs(os.path.dirname(_lp), exist_ok=True)
+    open(_lp, 'w').write('hello log')
+    _got = urllib.request.urlopen(
+        f'http://127.0.0.1:{_port2}/log?p=' + urllib.parse.quote(_lp), timeout=5).read().decode()
+    _code = None
+    try:
+        urllib.request.urlopen(
+            f'http://127.0.0.1:{_port2}/log?p=' + urllib.parse.quote('/etc/hosts'), timeout=5)
+    except urllib.error.HTTPError as e:
+        _code = e.code
+finally:
+    statusline.stop_tasks_server(_srv2)
+check('看板服务:/log 回传会话内日志内容', _got == 'hello log')
+check('看板服务:/log 拒绝会话目录外路径', _code == 403)
+
+# 运行中的静默任务(如 sleep)output.log 尚未产生:链接照给,/log 回占位提示而非 403
+_srv3, _port3 = statusline.start_tasks_server(port=0)
+try:
+    _missing = os.path.join(tmp_srv, 'wd_projA_aaa111', 'sess_A', 'agents', 'main', 'tasks', 'bash-quiet', 'output.log')
+    _quiet = urllib.request.urlopen(
+        f'http://127.0.0.1:{_port3}/log?p=' + urllib.parse.quote(_missing), timeout=5).read().decode()
+finally:
+    statusline.stop_tasks_server(_srv3)
+check('看板服务:日志未产生时回占位提示(非 403)', len(_quiet) > 0)
 
 print()
 if FAILED:

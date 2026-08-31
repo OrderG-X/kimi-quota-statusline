@@ -2,6 +2,11 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [1.5.0] - 2026-08-31
+
+### Added
+- **实时任务看板**:⚙ 段链接升级为 127.0.0.1 回环小服务(端口 18989-18998 自选,port 文件单实例;无 running 且无请求 15 分钟自灭,24h 绝对寿命防僵尸),页面每秒 fetch 局部刷新(不闪不丢滚动),全会话任务总览按项目分组(重名补 sid 片段消歧);幽灵 running 降级展示(process 查 pid 存活,agent/question 查所属会话 wire 活跃度,均不改任务记录),2h 前的考古任务不进板;日志走同源 `/log` 路由(http 页面浏览器禁止跳 file://,白名单限 SESSIONS 内 .log/.jsonl,尾部 64KB,静默任务回占位提示),agent 任务链 wire.jsonl 转录可直看子代理在干嘛;服务拉起失败回退 v1.4.0 静态 file:// 看板;回归 +15(总 74)
+
 ## [1.4.0] - 2026-08-30
 
 ### Added

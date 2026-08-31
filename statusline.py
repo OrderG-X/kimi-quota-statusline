@@ -503,13 +503,280 @@ def render_tasks_html(tasks):
 
 
 def task_segment(tasks):
-    """后台任务段:有 running 才显示;整段 OSC 8 超链接到本地看板(TUI 渲染链零剥离,可点击)。"""
+    """后台任务段:有 running 才显示;整段 OSC 8 超链接到任务看板(实时 http 服务优先,回退静态页)。"""
     n = sum(1 for t in tasks if t.get('status') == 'running')
     if not n:
         return None
-    render_tasks_html(tasks)
+    url = board_url()
+    if not url:
+        render_tasks_html(tasks)
+        url = 'file://' + TASKS_HTML
     label = c(f'⚙ {n}', YELLOW, BOLD)
-    return f'\033]8;;file://{TASKS_HTML}\a{label}\033]8;;\a'
+    return f'\033]8;;{url}\a{label}\033]8;;\a'
+
+
+# ---------- 实时任务看板服务(仅 127.0.0.1 回环;/data 每秒局部刷新,全会话总览) ----------
+TASKS_PORT_FILE = os.path.join(HOME, 'statusline-tasks.port')
+TASKS_PORTS = range(18989, 18999)
+SERVER_IDLE_S = 900       # 无 running 且无请求 15 分钟自灭
+SERVER_MAX_AGE_S = 86400  # 绝对寿命 24h,防跨版本僵尸
+
+
+def tasks_payload():
+    """全会话后台任务总览:按会话分组,会话内 running 在前、新的在前;有 running 的会话排前。
+    展示层修正(不改任务记录,属主会话自己管):
+    - 幽灵 running 降级 lost:process 任务查 pid 存活(POSIX;Windows 跳过按原样),
+      agent/question 任务看所属会话 wire.jsonl 活跃度(120s 无写入即死会话)
+    - 已完成任务只保留近 2h,更早的是考古数据不进看板
+    """
+    now_ms = time.time() * 1000
+    groups = {}
+    for p in glob.glob(os.path.join(SESSIONS, '*', '*', 'agents', 'main', 'tasks', '*.json')):
+        try:
+            with open(p, encoding='utf-8', errors='replace') as f:
+                t = json.load(f)
+        except Exception:
+            continue
+        if not (isinstance(t, dict) and t.get('taskId')):
+            continue
+        if t.get('status') == 'running':
+            if t.get('kind') == 'process' and t.get('pid') and os.name != 'nt':
+                try:
+                    os.kill(int(t['pid']), 0)
+                except (OSError, ValueError):
+                    t['status'] = 'lost'
+            elif t.get('kind') != 'process':
+                wire = os.path.join(os.path.dirname(os.path.dirname(p)), 'wire.jsonl')
+                try:
+                    if time.time() - os.stat(wire).st_mtime > 120:
+                        t['status'] = 'lost'
+                except OSError:
+                    t['status'] = 'lost'
+        elif now_ms - (t.get('endedAt') or t.get('startedAt') or 0) > 2 * 3600 * 1000:
+            continue  # 2h 前的已结束任务:考古数据
+        parts = p.split(os.sep)  # …/sessions/<wd>/<sid>/agents/main/tasks/<tid>.json
+        sid = parts[-5] if len(parts) >= 5 else ''
+        wd = parts[-6] if len(parts) >= 6 else ''
+        label = wd[3:] if wd.startswith('wd_') else wd
+        label = label.rsplit('_', 1)[0] or label  # 去目录名末尾的 hash 后缀
+        t['_log'] = os.path.join(os.path.dirname(p), str(t['taskId']), 'output.log')
+        # 看板链接走同源 /log 路由(http 页面禁止跳 file://):agent 链 wire 转录,其余链 output.log
+        from urllib.parse import quote
+        if t.get('kind') == 'agent' and t.get('agentId'):
+            wire = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(p))),
+                                str(t['agentId']), 'wire.jsonl')
+            if os.path.isfile(wire):
+                t['_log_url'] = '/log?p=' + quote(wire)
+        if '_log_url' not in t:  # 静默任务 output.log 可能还没产生,链接照给(/log 会回占位提示)
+            t['_log_url'] = '/log?p=' + quote(t['_log'])
+        groups.setdefault((sid, label), []).append(t)
+    sessions = []
+    for (sid, label), tasks in groups.items():
+        tasks.sort(key=lambda x: (x.get('status') != 'running', -(x.get('startedAt') or 0)))
+        sessions.append({'sid': sid, 'label': label, 'tasks': tasks})
+    sessions.sort(key=lambda s: (not any(t.get('status') == 'running' for t in s['tasks']),
+                                 -max((t.get('startedAt') or 0) for t in s['tasks'])))
+    dup = {}
+    for s in sessions:
+        dup[s['label']] = dup.get(s['label'], 0) + 1
+    for s in sessions:  # 同项目多会话:标签补 sid 片段消歧
+        if dup[s['label']] > 1:
+            s['label'] = f"{s['label']} · {s['sid'].replace('session_', '')[:8]}"
+    return {'generated': time.time(), 'sessions': sessions}
+
+
+_BOARD_PAGE = """<!doctype html><meta charset="utf-8"><title>后台任务 · kimi-quota-statusline</title>
+<style>body{background:#0d1117;color:#c9d1d9;font:14px/1.6 -apple-system,monospace;padding:20px;max-width:960px;margin:auto}
+table{border-collapse:collapse;width:100%}td{padding:4px 10px;border-bottom:1px solid #21262d;vertical-align:top}
+a{color:#4fa8ff}.muted{color:#8b949e}.run{color:#4fa8ff}.ok{color:#3fb950}.bad{color:#f85149}
+h3 span{font-weight:normal;font-size:12px}</style>
+<h3>⚙ 后台任务 <span id="meta" class="muted"></span></h3><table id="t"></table>
+<script>
+function cell(tr, txt, cls) {
+  const td = document.createElement('td');
+  td.textContent = txt;
+  if (cls) td.className = cls;
+  tr.appendChild(td);
+}
+function row(t) {
+  const tr = document.createElement('tr');
+  const st = t.status || '';
+  cell(tr, st, st === 'running' ? 'run' : (st === 'completed' ? 'ok' : 'bad'));
+  cell(tr, t.kind || '');
+  cell(tr, t.description || t.command || t.taskId);
+  const s = Math.max(0, Math.round(((t.endedAt || Date.now()) - (t.startedAt || 0)) / 1000));
+  cell(tr, s >= 60 ? Math.floor(s / 60) + 'm' + String(s % 60).padStart(2, '0') + 's' : s + 's');
+  const td = document.createElement('td');
+  if (t._log_url) {
+    const a = document.createElement('a');
+    a.href = t._log_url; a.textContent = t.kind === 'agent' ? 'transcript' : 'output';
+    td.appendChild(a);
+  }
+  tr.appendChild(td);
+  return tr;
+}
+async function tick() {
+  try {
+    const d = await (await fetch('/data')).json();
+    const tbl = document.getElementById('t');
+    tbl.innerHTML = '';
+    let running = 0, total = 0;
+    for (const s of d.sessions) {
+      const h = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 5; td.className = 'muted';
+      td.textContent = '▸ ' + s.label;
+      h.appendChild(td); tbl.appendChild(h);
+      for (const t of s.tasks) { tbl.appendChild(row(t)); total++; if (t.status === 'running') running++; }
+    }
+    document.getElementById('meta').textContent =
+      running + ' running / ' + total + ' total · ' + new Date().toLocaleTimeString() + ' · 1s 实时';
+  } catch (e) {
+    document.getElementById('meta').textContent = '连接看板服务失败(可能已闲置自灭),回到终端点 ⚙ 重新拉起';
+  }
+}
+setInterval(tick, 1000); tick();
+</script>"""
+
+
+def _make_tasks_handler():
+    from http.server import BaseHTTPRequestHandler
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.server.last_req = time.time()
+            if self.path.startswith('/data'):
+                body = json.dumps(tasks_payload(), ensure_ascii=False).encode()
+                ctype = 'application/json; charset=utf-8'
+            elif self.path.startswith('/log'):
+                # 同源回传会话内日志(尾部 64KB):http 页面禁止跳 file://,只能由服务代读。
+                # 路径白名单:必须在 SESSIONS 下且是 .log/.jsonl,防任意文件读取
+                from urllib.parse import urlparse, parse_qs
+                q = parse_qs(urlparse(self.path).query)
+                rp = os.path.realpath(q.get('p', [''])[0])
+                root = os.path.realpath(SESSIONS)
+                if rp.startswith(root + os.sep) and rp.endswith(('.log', '.jsonl')):
+                    if os.path.isfile(rp):
+                        with open(rp, 'rb') as f:
+                            f.seek(0, 2)
+                            size = f.tell()
+                            f.seek(max(0, size - 65536))
+                            body = f.read()
+                    else:
+                        body = '(日志尚未产生,任务可能还在静默运行)'.encode()
+                    ctype = 'text/plain; charset=utf-8'
+                else:
+                    self.send_error(403)
+                    return
+            elif self.path in ('/', '/index.html'):
+                body = _BOARD_PAGE.encode()
+                ctype = 'text/html; charset=utf-8'
+            else:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header('Content-Type', ctype)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    return H
+
+
+def start_tasks_server(port=None, background=True):
+    """起看板服务(仅 127.0.0.1);port=None 依次试 TASKS_PORTS,port=0 系统分配(测试)。返回 (server, port)。"""
+    from http.server import ThreadingHTTPServer
+    candidates = [port] if port is not None else list(TASKS_PORTS)
+    srv = None
+    for p in candidates:
+        try:
+            srv = ThreadingHTTPServer(('127.0.0.1', p), _make_tasks_handler())
+            break
+        except OSError:
+            continue
+    if srv is None:
+        return None, 0
+    srv.last_req = time.time()
+    srv.daemon_threads = True
+    if background:
+        import threading
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, srv.server_address[1]
+
+
+def stop_tasks_server(srv):
+    """停掉后台线程里的服务(测试用;watchdog 自灭走 serve_forever 返回后的 server_close)。"""
+    try:
+        srv.shutdown()
+        srv.server_close()
+    except Exception:
+        pass
+
+
+def _probe_port(port, timeout=0.1):
+    import socket
+    try:
+        with socket.create_connection(('127.0.0.1', port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def board_url():
+    """看板地址:服务在线返回 http URL;不在线则拉起(detached)并返回 None——下一秒渲染自然接上,
+    本次回退静态 file:// 板。渲染预算 300ms,绝不在这等服务就绪。"""
+    try:
+        port = int(open(TASKS_PORT_FILE).read().split()[0])
+    except Exception:
+        port = None
+    if port and _probe_port(port):
+        return f'http://127.0.0.1:{port}/'
+    try:
+        subprocess.Popen([sys.executable, os.path.abspath(__file__), '--tasks-server'],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, **_detached_kwargs())
+    except OSError:
+        pass
+    return None
+
+
+def tasks_server_main():
+    """--tasks-server 入口:选端口、写 port 文件、看门狗(闲置/超限自灭)、阻塞服务。"""
+    srv, port = start_tasks_server(port=None, background=False)
+    if srv is None:
+        return
+    t0 = time.time()
+    try:
+        with open(TASKS_PORT_FILE, 'w') as f:
+            f.write(f'{port} {os.getpid()}')
+    except OSError:
+        pass
+
+    def watchdog():
+        import threading  # noqa: F401
+        while True:
+            time.sleep(30)
+            idle = time.time() - srv.last_req > SERVER_IDLE_S
+            has_running = any(t.get('status') == 'running'
+                              for s in tasks_payload()['sessions'] for t in s['tasks'])
+            if (idle and not has_running) or time.time() - t0 > SERVER_MAX_AGE_S:
+                srv.shutdown()
+                return
+
+    import threading
+    threading.Thread(target=watchdog, daemon=True).start()
+    try:
+        srv.serve_forever()
+    finally:
+        srv.server_close()
+        try:
+            os.remove(TASKS_PORT_FILE)
+        except OSError:
+            pass
 
 
 def pick(d, *keys, default=''):
@@ -641,5 +908,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--refresh':
         refresh_cache(sys.argv[2] if len(sys.argv) > 2 else '',
                       sys.argv[3] if len(sys.argv) > 3 else '')
+    elif len(sys.argv) > 1 and sys.argv[1] == '--tasks-server':
+        tasks_server_main()
     else:
         main()
