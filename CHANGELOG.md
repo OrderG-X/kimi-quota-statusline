@@ -2,6 +2,11 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [1.5.1] - 2026-08-31
+
+### Fixed
+- Windows:看板幽灵 running 降级失效——`os.kill(pid, 0)` 在 Windows 不支持,旧代码用 `os.name` 守卫直接跳过校验,死会话的 process 任务在 Windows 下一直冒充 running(windows CI 当场红);改 `_pid_alive()` 跨平台统一实现(Windows 走 OpenProcess + GetExitCodeProcess,STILL_ACTIVE 才算活)
+
 ## [1.5.0] - 2026-08-31
 
 ### Added

@@ -105,6 +105,7 @@ Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通�
 - 凭据文件写死老槽位:0.38.0 双 OAuth 起凭据按 (oauthHost, baseUrl) 的 sha256 前 16 位分槽位(`kimi-code-env-<hash>.json`),国际版登录后老的 `kimi-code.json` 不复存在,写死它会导致额度拉取静默失败、一直显示缓存里上一个账号的数据;槽位与端点必须从 config.toml 解析(v1.3.3 修复,回归锁死)。另:`api.kimi.ai` 裸请求(无 UA)会 403,带 `kimi-code-cli` UA 正常。
 - **http 页面禁止跳 file:// 链接**(浏览器安全策略,Chrome/Safari 皆是):看板从 file:// 静态页升级为 http 服务后,页面里的 output/transcript 链接全部点不动(v1.5.0 真机发现)——日志必须由服务同源代读(`/log` 路由),别在 http 页面里放 file:// 链接。file:// 页面之间互跳不受此限。
 - 看板服务的 Windows 真机验证待补:`--tasks-server` 的 detached 派生走的是与后台刷新相同的 `_detached_kwargs()`(DETACHED_PROCESS 形态),回归与 CI 覆盖不了真实 TUI 环境,Windows 下首次拉起看板服务需真机肉眼确认一次(macOS 已验证);失败时回退静态 file:// 板,功能降级但不挂。
+- 发版顺序纪律:tag/release 必须在 push 后**等三平台 CI 全绿**再打(v1.5.0 把 commit/push/tag/release 串成一批命令,windows CI 红被烙进 tag,只能发 v1.5.1 补救)。另外 POSIX 专属 API(如 `os.kill(pid, 0)`)加 `os.name` 守卫跳过会让行为平台分叉、Windows 测试当场露馅——跨平台行为要统一实现(如 `_pid_alive` 的 Windows OpenProcess 路径),别用守卫回避。
 
 ## 九、路线图(想法池)
 

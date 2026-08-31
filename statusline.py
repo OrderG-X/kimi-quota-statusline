@@ -522,6 +522,30 @@ SERVER_IDLE_S = 900       # 无 running 且无请求 15 分钟自灭
 SERVER_MAX_AGE_S = 86400  # 绝对寿命 24h,防跨版本僵尸
 
 
+def _pid_alive(pid):
+    """pid 存活检查:POSIX 用 kill(0);Windows 用 OpenProcess + GetExitCodeProcess
+    (os.kill(pid, 0) 在 Windows 不支持,返回 STILL_ACTIVE(259) 才算活)。"""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if os.name == 'nt':
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        code = ctypes.c_ulong(0)
+        ok = k32.GetExitCodeProcess(h, ctypes.byref(code))
+        k32.CloseHandle(h)
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
 def tasks_payload():
     """全会话后台任务总览:按会话分组,会话内 running 在前、新的在前;有 running 的会话排前。
     展示层修正(不改任务记录,属主会话自己管):
@@ -540,10 +564,8 @@ def tasks_payload():
         if not (isinstance(t, dict) and t.get('taskId')):
             continue
         if t.get('status') == 'running':
-            if t.get('kind') == 'process' and t.get('pid') and os.name != 'nt':
-                try:
-                    os.kill(int(t['pid']), 0)
-                except (OSError, ValueError):
+            if t.get('kind') == 'process' and t.get('pid'):
+                if not _pid_alive(t['pid']):
                     t['status'] = 'lost'
             elif t.get('kind') != 'process':
                 wire = os.path.join(os.path.dirname(os.path.dirname(p)), 'wire.jsonl')
