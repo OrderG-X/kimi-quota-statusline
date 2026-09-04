@@ -77,7 +77,7 @@ time (cat ~/.kimi-code/statusline-stdin.json | python3 statusline.py > /dev/null
 
 ## 七、CLI 更新后的兼容性巡检
 
-Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通过则无需改动,有失败项按「三、数据通道」定位修复。最近基线:CLI 0.39.1(2026-08-30 全部通过;patch,变更全是 web 端修复,无 status_line/stdin/usages/wire/oauth 相关条目;当日真机 0.39.1 会话快照 10 字段吻合,渲染与官方额度通道(国内默认槽位回退路径)实测正常)。上一基线:CLI 0.39.0(2026-08-28 全部通过;跨 minor,changelog 无相关条目,仅 CLI 自带 /usage context bar 显示修复与插件市场 UI 条目;快照 10 字段与渲染当日真机确认)。
+Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通过则无需改动,有失败项按「三、数据通道」定位修复。最近基线:CLI 0.40.1(2026-09-04 全部通过;跨 minor,0.39.1→0.40.1 changelog 无 status_line/stdin/usages/wire/oauth 相关条目,仅 web 插件面板与 config.toml 写入优化(后者对读配置是利好);当日真机 0.40.1 会话快照 10 字段吻合,渲染与额度通道实测正常)。**盯梢项:0.41.0 在途(官方 changelog 已见条目未推 stable),web 端权限模式改名 Always Ask/Ask When Needed/Never Ask,落地后需确认 stdin 快照 `permissionMode` 枚举值不变(本插件按 manual/yolo/其他三档着色,枚举变了会错色);另 #3522 后台提问改直投 agent,需确认 tasks/*.json 结构不变。**上一基线:CLI 0.39.1(2026-08-30 全部通过;patch,变更全是 web 端修复;快照 10 字段与渲染、额度通道当日真机确认)。
 
 1. **官方 changelog 对照**:https://www.kimi.com/code/docs/en/kimi-code-cli/release-notes/changelog.html ,搜 status_line / plugin / wire / usages 相关条目。
 2. **stdin 快照字段**:`cat ~/.kimi-code/statusline-stdin.json` —— 应含 `model, cwd, gitBranch, permissionMode, planMode, contextUsage, contextTokens, maxContextTokens, sessionId, version`。
