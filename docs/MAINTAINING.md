@@ -77,7 +77,7 @@ time (cat ~/.kimi-code/statusline-stdin.json | python3 statusline.py > /dev/null
 
 ## 七、CLI 更新后的兼容性巡检
 
-Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通过则无需改动,有失败项按「三、数据通道」定位修复。最近基线:CLI 0.41.0(2026-09-05 全部通过;跨 minor,0.40.1→0.41.0 changelog 无 status_line/stdin/usages/wire/oauth 相关条目;两个盯梢项实测均为虚惊——web 权限模式改名(#3549)只是文案,快照 `permissionMode` 实测仍小写枚举 `yolo`,三档着色不受影响;#3522 后台提问直投不动 tasks/*.json 结构,process/agent 样本依赖字段全在位,question 类暂无 0.41.0 实测样本,下次真机出现顺手抽查;当日真机快照 10 字段吻合,渲染与额度通道实测正常)。上一基线:CLI 0.40.1(2026-09-04 全部通过;跨 minor,changelog 无相关条目,仅 web 插件面板与 config.toml 写入优化;快照 10 字段与渲染当日真机确认)。
+Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通过则无需改动,有失败项按「三、数据通道」定位修复。最近基线:CLI 0.41.0(2026-09-05 全部通过;跨 minor,0.40.1→0.41.0 changelog 无 status_line/stdin/usages/wire/oauth 相关条目;两个盯梢项实测均为虚惊——web 权限模式改名(#3549)只是文案,快照 `permissionMode` 实测仍小写枚举 `yolo`,三档着色不受影响;#3522 后台提问直投不动 tasks/*.json 结构,process/agent 样本依赖字段全在位,question 类样本 2026-09-08 已实测到(kind=question,字段 taskId/description/status/detached/startedAt/endedAt/questionCount/toolCallId,结构不变,盯梢闭环);当日真机快照 10 字段吻合,渲染与额度通道实测正常)。上一基线:CLI 0.40.1(2026-09-04 全部通过;跨 minor,changelog 无相关条目,仅 web 插件面板与 config.toml 写入优化;快照 10 字段与渲染当日真机确认)。
 
 1. **官方 changelog 对照**:https://www.kimi.com/code/docs/en/kimi-code-cli/release-notes/changelog.html ,搜 status_line / plugin / wire / usages 相关条目。
 2. **stdin 快照字段**:`cat ~/.kimi-code/statusline-stdin.json` —— 应含 `model, cwd, gitBranch, permissionMode, planMode, contextUsage, contextTokens, maxContextTokens, sessionId, version`。
