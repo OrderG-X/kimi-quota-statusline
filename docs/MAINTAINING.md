@@ -77,7 +77,7 @@ time (cat ~/.kimi-code/statusline-stdin.json | python3 statusline.py > /dev/null
 
 ## 七、CLI 更新后的兼容性巡检
 
-Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通过则无需改动,有失败项按「三、数据通道」定位修复。最近基线:CLI 0.43.1(2026-09-15 全部通过;一周跨 0.42.0/0.43.0/0.43.1 三版,changelog 逐版筛零命中 status_line/stdin/usages/wire/oauth/tasks 契约;快照 10 字段吻合、permissionMode 仍小写枚举(auto/yolo 都见过)、渲染与额度通道(国际版 env 槽位)实测正常;唯磁盘快照由 0.42.0 会话最后写入,0.43.1 真会话渲染后自然刷新,风险极低)。上一基线:CLI 0.41.0(2026-09-05 全部通过;权限改名仅 web 文案、#3522 不动 tasks 结构,question 类样本 09-08 实测闭环)。
+Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通过则无需改动,有失败项按「三、数据通道」定位修复。最近基线:CLI 0.43.1(2026-09-15 全部通过;一周跨 0.42.0/0.43.0/0.43.1 三版,changelog 逐版筛零命中 status_line/stdin/usages/wire/oauth/tasks 契约;快照 10 字段吻合、permissionMode 仍小写枚举(auto/yolo 都见过)、渲染与额度通道(国际版 env 槽位)实测正常;#3780 TUI 引擎更新当日真机肉眼确认无碍——颜色/布局/swarm 动效/OSC 8 链接全正常,引擎 rebaseline 不波及本插件)。上一基线:CLI 0.41.0(2026-09-05 全部通过;权限改名仅 web 文案、#3522 不动 tasks 结构,question 类样本 09-08 实测闭环)。
 
 1. **官方 changelog 对照**:https://www.kimi.com/code/docs/en/kimi-code-cli/release-notes/changelog.html ,搜 status_line / plugin / wire / usages 相关条目。
 2. **stdin 快照字段**:`cat ~/.kimi-code/statusline-stdin.json` —— 应含 `model, cwd, gitBranch, permissionMode, planMode, contextUsage, contextTokens, maxContextTokens, sessionId, version`。
