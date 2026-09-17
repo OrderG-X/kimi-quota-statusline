@@ -826,6 +826,16 @@ def hook_quota():
     except Exception:
         ev = {}
     sid = ev.get('session_id', '') or ''
+    # TUI 自带状态栏常驻额度,hook 对它是重复劳动——仅 TUI 静默,其余端(桌面/web/ACP)照常
+    if ev.get('client_type') == 'kimi_code_cli':
+        return
+    # 抓包调试:KIMI_SL_HOOK_DEBUG=1 时记录真实 hook 载荷(排查各端 client_type 用)
+    if os.environ.get('KIMI_SL_HOOK_DEBUG') == '1':
+        try:
+            with open(os.path.join(HOME, 'statusline-hook-payloads.jsonl'), 'a', encoding='utf-8') as f:
+                f.write(json.dumps({'ts': time.time(), 'ev': ev}, ensure_ascii=False) + '\n')
+        except OSError:
+            pass
     try:
         tokens = load_tokens(sid, '')
     except Exception:

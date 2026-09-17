@@ -2,6 +2,11 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [1.6.1] - 2026-09-18
+
+### Changed
+- 额度提醒 hook 按客户端分流:TUI(`client_type=kimi_code_cli`)自带状态栏常驻额度,hook 静默不注入(省输入 token、免重复);桌面端(`kimi_code_desktop`)/web 等其他端照常注入;hook 载荷抓包改 `KIMI_SL_HOOK_DEBUG=1` 门控;回归 +3(总 82)
+
 ## [1.6.0] - 2026-09-18
 
 ### Added

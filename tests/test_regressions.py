@@ -729,6 +729,20 @@ check('hook:7d 超八成附回显指令', '原样附上' in _h)
 _h = run_hook({'ts': now}, '{bad')
 check('hook:坏输入不炸且无输出', _h == '')
 
+# client_type 分流(v1.6.1):TUI 有状态栏常驻额度,hook 静默;其余端(桌面/web)照常注入
+_h = run_hook({'ts': now, 'official': {'ts': now, 'h5_used': 16, 'h5_limit': 100,
+                                       'wk_used': 3, 'wk_limit': 100}},
+              '{"client_type":"kimi_code_cli"}')
+check('hook:TUI(kimi_code_cli)静默不注入', _h == '')
+_h = run_hook({'ts': now, 'official': {'ts': now, 'h5_used': 16, 'h5_limit': 100,
+                                       'wk_used': 3, 'wk_limit': 100}},
+              '{"client_type":"kimi_code_desktop"}')
+check('hook:桌面端(kimi_code_desktop)照常注入', '⏱ 5h 16%' in _h)
+_h = run_hook({'ts': now, 'official': {'ts': now, 'h5_used': 16, 'h5_limit': 100,
+                                       'wk_used': 3, 'wk_limit': 100}},
+              '{}')
+check('hook:无 client_type(未知端)默认注入', '⏱ 5h 16%' in _h)
+
 # install.patch_managed_hook:Windows 无 python3 时把托管 manifest 的 hook 解释器换绝对路径
 _mdir = tempfile.mkdtemp()
 _mf = os.path.join(_mdir, 'kimi.plugin.json')
