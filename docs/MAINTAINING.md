@@ -77,7 +77,7 @@ time (cat ~/.kimi-code/statusline-stdin.json | python3 statusline.py > /dev/null
 
 ## 七、CLI 更新后的兼容性巡检
 
-Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通过则无需改动,有失败项按「三、数据通道」定位修复。最近基线:CLI 0.43.1(2026-09-15 全部通过;一周跨 0.42.0/0.43.0/0.43.1 三版,changelog 逐版筛零命中 status_line/stdin/usages/wire/oauth/tasks 契约;快照 10 字段吻合、permissionMode 仍小写枚举(auto/yolo 都见过)、渲染与额度通道(国际版 env 槽位)实测正常;#3780 TUI 引擎更新当日真机肉眼确认无碍——颜色/布局/swarm 动效/OSC 8 链接全正常,引擎 rebaseline 不波及本插件)。上一基线:CLI 0.41.0(2026-09-05 全部通过;权限改名仅 web 文案、#3522 不动 tasks 结构,question 类样本 09-08 实测闭环)。
+Kimi Code 升级后(尤其跨 minor 版本),按本清单逐项核对;全部通过则无需改动,有失败项按「三、数据通道」定位修复。最近基线:CLI 2.0.0(2026-09-17 全部通过;跨 major(由头是官方桌面端 #3849 /desktop + kimi install-app),changelog 23 条全量筛零命中 status_line/stdin/usages/wire/oauth/credentials 契约;快照 10 字段吻合、permissionMode 仍小写枚举、渲染与额度通道(国际版 env 槽位)、tasks 结构、看板链路实测全过;#3778 被停任务状态改报 `cancelled`(原 failed/aborted)仅语义调整,看板未知状态走灰色兜底反而更准,无需适配)。上一基线:CLI 0.43.1(2026-09-15 全部通过;跨三版零命中,#3780 TUI 引擎更新真机肉眼确认不波及)。
 
 1. **官方 changelog 对照**:https://www.kimi.com/code/docs/en/kimi-code-cli/release-notes/changelog.html ,搜 status_line / plugin / wire / usages 相关条目。
 2. **stdin 快照字段**:`cat ~/.kimi-code/statusline-stdin.json` —— 应含 `model, cwd, gitBranch, permissionMode, planMode, contextUsage, contextTokens, maxContextTokens, sessionId, version`。
