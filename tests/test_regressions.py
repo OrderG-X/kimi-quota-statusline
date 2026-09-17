@@ -698,6 +698,47 @@ finally:
     statusline.stop_tasks_server(_srv3)
 check('看板服务:日志未产生时回占位提示(非 403)', len(_quiet) > 0)
 
+# ---------- 额度提醒 hook(v1.6.0):UserPromptSubmit 注入,吃紧才回显 ----------
+def run_hook(cache_obj, ev='{}'):
+    fd, path = tempfile.mkstemp(suffix='.json')
+    with os.fdopen(fd, 'w') as f:
+        json.dump(cache_obj, f)
+    old_cache, old_stdin = statusline.CACHE, sys.stdin
+    statusline.CACHE = path
+    sys.stdin = io.StringIO(ev)
+    buf = io.StringIO()
+    try:
+        with redirect_stdout(buf):
+            statusline.hook_quota()
+    finally:
+        statusline.CACHE = old_cache
+        sys.stdin = old_stdin
+        os.unlink(path)
+    return buf.getvalue()
+
+
+_h = run_hook({'ts': now, 'official': {'ts': now, 'h5_used': 16, 'h5_limit': 100,
+                                       'wk_used': 3, 'wk_limit': 100}})
+check('hook:低水位出数据不带回显指令', '⏱ 5h 16%' in _h and '7d 3%' in _h and '原样附上' not in _h)
+_h = run_hook({'ts': now, 'official': {'ts': now, 'h5_used': 55, 'h5_limit': 100,
+                                       'wk_used': 3, 'wk_limit': 100}})
+check('hook:5h 过半附回显指令', '原样附上' in _h)
+_h = run_hook({'ts': now, 'official': {'ts': now, 'h5_used': 16, 'h5_limit': 100,
+                                       'wk_used': 85, 'wk_limit': 100}})
+check('hook:7d 超八成附回显指令', '原样附上' in _h)
+_h = run_hook({'ts': now}, '{bad')
+check('hook:坏输入不炸且无输出', _h == '')
+
+# install.patch_managed_hook:Windows 无 python3 时把托管 manifest 的 hook 解释器换绝对路径
+_mdir = tempfile.mkdtemp()
+_mf = os.path.join(_mdir, 'kimi.plugin.json')
+json.dump({'hooks': [{'event': 'UserPromptSubmit',
+                      'command': 'python3 ./statusline.py --hook-quota'}]}, open(_mf, 'w'))
+_inst.patch_managed_hook(managed_file=_mf, os_name='nt', executable='C:\\Python312\\python.exe')
+_cmd = json.load(open(_mf))['hooks'][0]['command']
+check('install:nt 下 hook 解释器换绝对路径',
+      'C:\\Python312\\python.exe' in _cmd and 'python3' not in _cmd)
+
 print()
 if FAILED:
     print(f'{len(FAILED)} 个用例失败')

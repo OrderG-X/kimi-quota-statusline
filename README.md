@@ -31,6 +31,7 @@ Kimi Code CLI 状态栏增强插件（statusline plugin)：**额度、消耗、s
 - ✅ 权限模式 / 模型·思考强度 / git 分支 / 项目目录
 - ✅ swarm 模式品牌蓝水波动效（约 8 秒）
 - ✅ **后台任务段**：有 running 的后台任务/子 agent 时显示 `⚙ N`，点击打开本地实时任务看板（全会话总览，1s 局部刷新，output/transcript 同源链接可看子代理在干嘛）
+- ✅ **额度提醒 hook**（三端生效）：每条消息把实时额度静默注入上下文（模型随时答得出"还剩多少"）,5h 过半 / 7d 超八成时模型自动在回复末尾亮出 ⏱ 提醒
 - ⚡ 单次运行 < 50ms（token 统计走缓存,TPS 走尾部限量扫描,300ms 预算内）
 
 ## 快速安装
@@ -120,6 +121,7 @@ When **swarm mode** is entered, a brand-blue (`#4FA8FF`) water ripple spreads ou
 - ✅ Permission mode / model · thinking effort / git branch / directory
 - ✅ Brand-blue water-ripple burst on swarm mode (~8 s)
 - ✅ **Background tasks**: shows `⚙ N` while background tasks/sub-agents are running — click to open a live local task board (all sessions, 1 s in-place refresh, output/transcript links to see what a sub-agent is doing)
+- ✅ **Quota reminder hook** (all surfaces): injects live quota into context on every message (the model can always answer "how much is left"); when 5h ≥ 50% or 7d ≥ 80%, the model appends a ⏱ reminder at the end of its replies
 - ⚡ Runs in < 50 ms (token stats served from cache, within the 300 ms budget)
 
 ## Quick install

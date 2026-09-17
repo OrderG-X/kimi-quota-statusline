@@ -4,6 +4,7 @@
 幂等;改动前自动备份(tui.toml.时间戳.bak);已有其他 command 会提示覆盖。
 macOS / Linux 可用兼容壳 install.sh;Windows 直接 `python install.py`。
 """
+import json
 import os
 import re
 import shutil
@@ -107,6 +108,33 @@ def install(tui, target, os_name=None, executable=None, doctor=True):
     return 0
 
 
+def patch_managed_hook(managed_file=None, os_name=None, executable=None):
+    """Windows:把托管副本 manifest 里 hook 命令的 python3 换成解释器绝对路径。
+
+    manifest 是静态 JSON 只能写死 `python3`(POSIX 必有);Windows 常只有 python.exe,
+    安装时顺手改写托管副本。hook 命令以插件根目录为 cwd,`./statusline.py` 相对路径不变。
+    失败(托管副本不存在/不可读)只跳过——不影响状态栏主功能。"""
+    if (os_name or os.name) != 'nt':
+        return
+    mf = managed_file or os.path.join(
+        os.environ.get('KIMI_CODE_HOME', os.path.expanduser('~/.kimi-code')),
+        'plugins', 'managed', 'kimi-quota-statusline', 'kimi.plugin.json')
+    try:
+        data = json.load(open(mf, encoding='utf-8'))
+        exe = executable or sys.executable
+        changed = False
+        for h in data.get('hooks') or []:
+            cmd = h.get('command', '')
+            if cmd.startswith('python3 '):
+                h['command'] = f'"{exe}"' + cmd[len('python3'):]
+                changed = True
+        if changed:
+            json.dump(data, open(mf, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+            print('提示:已把托管插件 hook 的解释器换成本机 Python 绝对路径(Windows)')
+    except (OSError, ValueError):
+        pass
+
+
 def main():
     # Windows 控制台 stdout 默认 locale 编码(cp1252/GBK),中文提示会炸;强制 UTF-8
     if hasattr(sys.stdout, 'reconfigure'):
@@ -118,6 +146,7 @@ def main():
         return 1
     kc_home = os.environ.get('KIMI_CODE_HOME', os.path.expanduser('~/.kimi-code'))
     rc = install(os.path.join(kc_home, 'tui.toml'), target)
+    patch_managed_hook()  # Windows:托管副本 hook 命令的 python3 换解释器绝对路径(无副本则跳过)
     if rc == 0:
         print('安装完成。在 Kimi Code TUI 中运行 /reload-tui 立即生效(或重开新会话)。')
         print('觉得好用的话,欢迎给个 Star ⭐ https://github.com/OrderG-X/kimi-quota-statusline')

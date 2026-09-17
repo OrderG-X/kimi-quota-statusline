@@ -2,6 +2,11 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [1.6.0] - 2026-09-18
+
+### Added
+- **额度提醒 hook(三端生效)**:插件 manifest 声明 `UserPromptSubmit` hook——每条用户消息把 5h/7d 额度 + 会话金额/TPS 静默注入上下文(`hook_result` 只进模型上下文、UI 不渲染,实测桌面端/TUI 一致),模型随时答得出额度;5h ≥50% 或 7d ≥80% 时附回显指令,模型在回复末尾亮出 ⏱ 行提醒(阈值 `HOOK_ECHO_H5`/`HOOK_ECHO_WK`);hook 以插件根目录为 cwd,`python3 ./statusline.py --hook-quota` 装插件即生效;install.py 在 Windows 下把托管副本 hook 命令的 python3 改写为解释器绝对路径(`patch_managed_hook`);回归 +5(总 79)
+
 ## [1.5.1] - 2026-08-31
 
 ### Fixed

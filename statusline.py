@@ -36,6 +36,8 @@ CRED_DIR = os.path.join(HOME, 'credentials')
 CRED_FILE = os.path.join(CRED_DIR, 'kimi-code.json')  # 国内版默认槽位(无 hash 老文件名)
 CONFIG_FILE = os.path.join(HOME, 'config.toml')
 OFFICIAL_FRESH_S = 600  # 官方数据 10 分钟内为新鲜;过期压暗加 ~ 标记,不再回退本地折算
+HOOK_ECHO_H5 = 0.5   # 额度提醒 hook:5h 用量过半才附回显指令
+HOOK_ECHO_WK = 0.8   # 7d 用量超八成才附回显指令
 
 
 def resolve_official_endpoint():
@@ -809,6 +811,48 @@ def pick(d, *keys, default=''):
     return default
 
 
+def hook_quota():
+    """UserPromptSubmit hook(spike):一行纯文本额度+消耗,exit 0 时 stdout 追加进上下文(三端生效)。
+
+    stdin 收到事件 JSON(含 session_id/cwd);只读缓存(过期由 statusline 的 detached
+    刷新补齐),绝不在 hook 里同步拉网络——每条用户消息都触发,必须快。
+    """
+    try:
+        if hasattr(sys.stdin, 'buffer'):
+            raw = sys.stdin.buffer.read().decode('utf-8', 'replace')
+        else:
+            raw = sys.stdin.read()
+        ev = json.loads(raw) if raw.strip() else {}
+    except Exception:
+        ev = {}
+    sid = ev.get('session_id', '') or ''
+    try:
+        tokens = load_tokens(sid, '')
+    except Exception:
+        tokens = {}
+    parts = []
+    off = (tokens or {}).get('official') or {}
+    for label, u, l in (('5h', 'h5_used', 'h5_limit'), ('7d', 'wk_used', 'wk_limit')):
+        if off.get(l):
+            parts.append(f"{label} {round(100 * off[u] / off[l])}%")
+    sess = pick_sess(tokens, sid)
+    if sess and sess.get('cost') is not None:
+        parts.append(f"¥{sess['cost']:.2f}")
+        tps = live_tps(sid) or session_tps(sess)
+        if tps > 0:
+            txt = f'{tps:.1f}' if tps < 100 else fmt_tokens(int(tps))
+            parts.append(f'{txt}t/s')
+    if not parts:
+        return
+    line = '⏱ ' + ' · '.join(parts)
+    print(line)
+    # 回显指令只在额度吃紧时给:平时数据静默进上下文(模型可见即可),不吵也不烧输出 token
+    h5_ratio = off['h5_used'] / off['h5_limit'] if off.get('h5_limit') else 0
+    wk_ratio = off['wk_used'] / off['wk_limit'] if off.get('wk_limit') else 0
+    if h5_ratio >= HOOK_ECHO_H5 or wk_ratio >= HOOK_ECHO_WK:
+        print('（以上是系统注入的实时额度数据。请在回复正文结束后另起一行,以 ⏱ 开头原样附上这行数据再收尾;纯代码/命令输出场景可省略。)')
+
+
 def main():
     # Windows 控制台 stdio 默认 locale 编码(cp1252/GBK):输入绕过文本层按 UTF-8 解,
     # 输出强制 UTF-8——否则中文目录名一 print 就 UnicodeEncodeError,整行回退内置布局
@@ -932,5 +976,7 @@ if __name__ == '__main__':
                       sys.argv[3] if len(sys.argv) > 3 else '')
     elif len(sys.argv) > 1 and sys.argv[1] == '--tasks-server':
         tasks_server_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == '--hook-quota':
+        hook_quota()
     else:
         main()

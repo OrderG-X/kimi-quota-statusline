@@ -1,6 +1,6 @@
 {
   "name": "kimi-quota-statusline",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "Kimi Code 底部状态栏增强:权限模式 / 模型·思考强度 / swarm 特效 / 5h·7d 官方额度条 / 会话 token·金额·实时 TPS / git·目录",
   "keywords": ["statusline", "quota", "usage", "status-bar", "tps"],
   "author": "guo",
@@ -10,5 +10,12 @@
     "shortDescription": "官方额度 + token 消耗 + TPS 的彩色底部状态栏",
     "longDescription": "替换 Kimi Code 底部第一行状态栏:显示权限模式、模型与思考强度、swarm 模式特效(整行边框+反色高亮)、5h/7d 官方额度进度条(直连官方 /usages 接口,与 /usage 同源)、本会话 token 消耗、按官方定价估算的金额、实时 TPS(最近 3 次请求配对均值,只计 output,空闲保留最后值)、git 分支与项目目录。"
   },
-  "commands": "./commands/"
+  "commands": "./commands/",
+  "hooks": [
+    {
+      "event": "UserPromptSubmit",
+      "command": "python3 ./statusline.py --hook-quota",
+      "timeout": 5
+    }
+  ]
 }
