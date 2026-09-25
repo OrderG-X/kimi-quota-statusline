@@ -32,12 +32,16 @@ def check(name, cond):
 
 
 def render(cache_obj, sid=''):
-    """用指定缓存渲染一次状态栏,返回输出文本。"""
+    """用指定缓存渲染一次状态栏,返回输出文本。
+    DEBUG_STDIN 一并隔离:main() 每次都会落盘调试快照,别污染真实的
+    ~/.kimi-code/statusline-stdin.json(2026-09-26 巡检曾被测试残留误导版本核对)。"""
     fd, path = tempfile.mkstemp(suffix='.json')
     with os.fdopen(fd, 'w') as f:
         json.dump(cache_obj, f)
     old_cache, old_stdin = statusline.CACHE, sys.stdin
+    old_debug = statusline.DEBUG_STDIN
     statusline.CACHE = path
+    statusline.DEBUG_STDIN = os.devnull
     sys.stdin = io.StringIO(json.dumps({'sessionId': sid, 'version': 'test'}))
     buf = io.StringIO()
     try:
@@ -45,6 +49,7 @@ def render(cache_obj, sid=''):
             statusline.main()
     finally:
         statusline.CACHE = old_cache
+        statusline.DEBUG_STDIN = old_debug
         sys.stdin = old_stdin
         os.unlink(path)
     return buf.getvalue()
