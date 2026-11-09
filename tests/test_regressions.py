@@ -544,6 +544,56 @@ check('双 OAuth:缺配置回退老凭据+官方域名',
       _cred.endswith(os.path.join('credentials', 'kimi-code.json'))
       and _url == 'https://api.kimi.com/coding/v1/usages')
 
+# ---------- 国际版月度额度(api.kimi.ai 无周配额,套餐上限是月度窗口) ----------
+# 原始响应 usages.limit_month_total 只给 used_ratio(0..1),fetch_official 折算
+# used/limit=1.0,渲染链路与 5h/7d 完全共用;国内账号(usage 周配额)行为不变
+tmp_mo = tempfile.mkdtemp()
+_cred_dir_mo = os.path.join(tmp_mo, 'credentials')
+os.mkdir(_cred_dir_mo)
+json.dump({'access_token': 'TOK_INTL', 'expires_at': time.time() + 600},
+          open(os.path.join(_cred_dir_mo, 'kimi-code.json'), 'w'))
+_old_cdir, _old_cfg_mo = statusline.CRED_DIR, statusline.CONFIG_FILE
+_old_cfile = statusline.CRED_FILE
+statusline.CRED_DIR = _cred_dir_mo
+statusline.CRED_FILE = os.path.join(_cred_dir_mo, 'kimi-code.json')
+statusline.CONFIG_FILE = os.path.join(tmp_mo, '不存在.toml')
+import urllib.request as _ur_mo
+class _RespMo:
+    def read(self):
+        return json.dumps({
+            'limits': [{'window': {'duration': 300, 'timeUnit': 'TIME_UNIT_MINUTE'},
+                        'detail': {'limit': '100', 'used': '15', 'remaining': '85',
+                                   'resetTime': '2026-11-09T14:59:46Z'}}],
+            'usages': {
+                'limit_5h': {'used_ratio': 0.15, 'reset_time': '2026-11-09T14:59:46Z'},
+                'limit_month_total': {'used_ratio': 0.0096, 'reset_time': '2026-12-10T00:00:00Z'},
+                'limit_month_code': {'used_ratio': 0.008, 'reset_time': '2026-12-10T00:00:00Z'}}}).encode()
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+_old_urlopen = _ur_mo.urlopen
+_ur_mo.urlopen = lambda req, timeout=0: _RespMo()
+try:
+    _off_mo = statusline.fetch_official('test')
+finally:
+    _ur_mo.urlopen = _old_urlopen
+    statusline.CRED_DIR, statusline.CONFIG_FILE = _old_cdir, _old_cfg_mo
+    statusline.CRED_FILE = _old_cfile
+check('国际版:解析月度额度 used_ratio 折算',
+      bool(_off_mo) and abs(_off_mo.get('mo_used', 0) - 0.0096) < 1e-9
+      and _off_mo.get('mo_limit') == 1.0
+      and _off_mo.get('mo_reset') == '2026-12-10T00:00:00Z')
+check('国际版:无周配额响应不产生 wk_* 键', bool(_off_mo) and 'wk_used' not in _off_mo)
+check('国际版:5h 窗口照常解析', bool(_off_mo) and _off_mo.get('h5_used') == 15.0)
+
+_mo_reset = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(now + 3 * 86400))
+out = render({'ts': now, 'official': {'ts': now, 'h5_used': 15, 'h5_limit': 100,
+                                      'mo_used': 0.0096, 'mo_limit': 1.0,
+                                      'mo_reset': _mo_reset}})
+check('国际版:渲染月度额度条 mo 1%%', 'mo' in out and '1%' in out)
+
+out = render({'ts': now, 'official': {'ts': now, 'h5_used': 15, 'h5_limit': 100}})
+check('无月度数据:不显示 mo 条', 'mo' not in out)
+
 # ---------- 后台任务段:当前会话有 running 任务/子 agent 才显示,⚙ N 可点击打开看板 ----------
 tmp_bg = tempfile.mkdtemp()
 statusline.SESSIONS = tmp_bg

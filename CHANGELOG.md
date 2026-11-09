@@ -2,6 +2,11 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [1.6.2] - 2026-11-09
+
+### Added
+- **国际版月度额度条**:国际版(`api.kimi.ai`,kimi.ai 登录)无周配额,`/coding/v1/usages` 返回 `usages.limit_month_total` / `limit_month_code`(仅 `used_ratio` 0..1),此前 `7d` 永不显示、套餐上限不可见;现解析 `limit_month_total` 折算 `used/limit=1.0` 渲染 `mo` 条(与 5h/7d 同一渲染链路,重置倒计时照常),有周配额的国内账号行为不变;回归 +5(总 87)
+
 ## [1.6.1] - 2026-09-18
 
 ### Changed

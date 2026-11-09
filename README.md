@@ -26,7 +26,7 @@ Kimi Code CLI 状态栏增强插件（statusline plugin)：**额度、消耗、s
 
 ![swarm 水波动效](assets/swarm.gif)
 
-- ✅ `5h` / `7d` 官方额度条：6 格进度 + 已用百分比 + 重置倒计时，绿/黄/红三档
+- ✅ `5h` / `7d` / `mo` 官方额度条：6 格进度 + 已用百分比 + 重置倒计时，绿/黄/红三档（国际版无周配额，`mo` 为月度窗口）
 - ✅ 本会话 token、估算金额与**实时 TPS**（最近数次请求的生成速度均值，空闲保留最后值）
 - ✅ 权限模式 / 模型·思考强度 / git 分支 / 项目目录
 - ✅ swarm 模式品牌蓝水波动效（约 8 秒）
@@ -67,7 +67,7 @@ python3 kimi-quota-statusline/install.py   # Windows: python kimi-quota-statusli
 | 权限模式 | `YOLO` / `AUTO` / `MANUAL`（大写，分色） | 状态栏 stdin 快照 |
 | 模型·思考强度 `[上下文]` | `K3·max [1M]`，强度从当前会话 wire 日志重建 | wire.jsonl |
 | swarm 特效 | 进入时品牌蓝水波双向扩散（~8s），随后静态蓝标 | wire.jsonl `swarm_mode.*` |
-| `5h` / `7d` 额度条 | 6 格进度条 + 已用百分比 + 重置倒计时，绿/黄/红三档 | **官方 `/usages` 接口**（超 10 分钟未更新压暗加 `~`，无数据不显示） |
+| `5h` / `7d` / `mo` 额度条 | 6 格进度条 + 已用百分比 + 重置倒计时，绿/黄/红三档（国际版 `mo` 取月度窗口，无周配额） | **官方 `/usages` 接口**（超 10 分钟未更新压暗加 `~`，无数据不显示） |
 | 本会话消耗 | token 量 + 估算金额 + 实时 TPS（仅当前会话，不含其他会话） | 当前会话 wire.jsonl `usage.record` 聚合 |
 | git 分支 / 项目目录 | ⎇ 分支、目录名 | stdin 快照 |
 
@@ -116,7 +116,7 @@ When **swarm mode** is entered, a brand-blue (`#4FA8FF`) water ripple spreads ou
 
 ![swarm ripple effect](assets/swarm.gif)
 
-- ✅ `5h` / `7d` official quota bars: 6-cell progress + used % + reset countdown, green/yellow/red
+- ✅ `5h` / `7d` / `mo` official quota bars: 6-cell progress + used % + reset countdown, green/yellow/red (on the international endpoint `mo` is the monthly window; there is no weekly quota)
 - ✅ Current-session tokens, estimated cost, and **live TPS** (mean generation speed of the last few requests, keeps last value when idle)
 - ✅ Permission mode / model · thinking effort / git branch / directory
 - ✅ Brand-blue water-ripple burst on swarm mode (~8 s)
@@ -157,7 +157,7 @@ Requirements: Kimi Code CLI ≥ 0.30.0 (the `[status_line]` feature), Python 3, 
 | Permission mode | `YOLO` / `AUTO` / `MANUAL` (uppercase, color-coded) | status line stdin snapshot |
 | Model · effort `[context]` | `K3·max [1M]`; effort rebuilt from the session wire log | `wire.jsonl` |
 | swarm effect | water-ripple burst on entry, then a static brand-blue marker | `wire.jsonl` `swarm_mode.*` |
-| `5h` / `7d` quota bars | 6-cell bar + used % + reset countdown, green/yellow/red | **official `/usages` endpoint** (dimmed with a `~` marker when stale > 10 min; hidden when unavailable) |
+| `5h` / `7d` / `mo` quota bars | 6-cell bar + used % + reset countdown, green/yellow/red (`mo` = monthly window on the international endpoint) | **official `/usages` endpoint** (dimmed with a `~` marker when stale > 10 min; hidden when unavailable) |
 | Current session usage | tokens + estimated cost + live TPS (this session only) | current session's `wire.jsonl` `usage.record` aggregation |
 | git branch / directory | ⎇ branch, basename of cwd | stdin snapshot |
 

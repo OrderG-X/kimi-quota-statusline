@@ -4,7 +4,7 @@
 stdin 收到 CLI 的 JSON 快照,stdout 替换底部状态栏(支持两行)。
 运行预算 300ms,每秒最多一次 —— token 统计走缓存,重活由后台 detached 进程刷新。
 
-第一行:权限 · 模型·强度 [上下文规格] · swarm · ⚙ 后台任务(running 才显示,OSC 8 可点击) · 5h/7d 额度条(官方接口) · 会话 token/金额/TPS · git · 目录
+第一行:权限 · 模型·强度 [上下文规格] · swarm · ⚙ 后台任务(running 才显示,OSC 8 可点击) · 5h/7d/mo 额度条(官方接口) · 会话 token/金额/TPS · git · 目录
 - 5h/7d 额度:仅官方 /usages 接口;过期压暗加 ~ 标记,从未拉到则不显示
   (本地 token 折算与官方窗口非线性、校准持续漂移,已于 v1.1.2 移除)
 - 本会话 token/金额:仅当前会话 wire.jsonl 的 usage.record 聚合
@@ -166,6 +166,13 @@ def fetch_official(ver=''):
             out['wk_used'] = float(wk.get('used', 0))
             out['wk_limit'] = float(wk['limit'])
             out['wk_reset'] = wk.get('resetTime', '')
+        # 国际版(api.kimi.ai)无周配额,套餐上限是月度窗口:limit_month_total 给的是
+        # used_ratio(0..1),折成 used/limit=1.0 让下游渲染逻辑不用改
+        mo = (d.get('usages') or {}).get('limit_month_total') or {}
+        if mo.get('used_ratio') is not None:
+            out['mo_used'] = float(mo['used_ratio'])
+            out['mo_limit'] = 1.0
+            out['mo_reset'] = mo.get('reset_time', '')
         for item in d.get('limits') or []:
             w = item.get('window') or {}
             if w.get('duration') == 300 and w.get('timeUnit') == 'TIME_UNIT_MINUTE':
@@ -842,7 +849,7 @@ def hook_quota():
         tokens = {}
     parts = []
     off = (tokens or {}).get('official') or {}
-    for label, u, l in (('5h', 'h5_used', 'h5_limit'), ('7d', 'wk_used', 'wk_limit')):
+    for label, u, l in (('5h', 'h5_used', 'h5_limit'), ('7d', 'wk_used', 'wk_limit'), ('mo', 'mo_used', 'mo_limit')):
         if off.get(l):
             parts.append(f"{label} {round(100 * off[u] / off[l])}%")
     sess = pick_sess(tokens, sid)
@@ -922,7 +929,7 @@ def main():
     if tokens:
         off = tokens.get('official') or {}
         stale = not off or (time.time() - off.get('ts', 0)) > OFFICIAL_FRESH_S
-        for label, okey in (('5h', 'h5'), ('7d', 'wk')):
+        for label, okey in (('5h', 'h5'), ('7d', 'wk'), ('mo', 'mo')):
             if not off.get(f'{okey}_limit'):
                 continue
             ratio = min(1.0, off[f'{okey}_used'] / off[f'{okey}_limit'])
