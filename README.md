@@ -26,12 +26,12 @@ Kimi Code CLI 状态栏增强插件（statusline plugin)：**额度、消耗、s
 
 ![swarm 水波动效](assets/swarm.gif)
 
-- ✅ `5h` / `7d` 官方额度条：6 格进度 + 已用百分比 + 重置倒计时，绿/黄/红三档
+- ✅ `5h` / `7d` / `mo` 官方额度条：6 格进度 + 已用百分比 + 重置倒计时，绿/黄/红三档（`mo` 取月度 total 窗口，各窗口按接口返回显示）
 - ✅ 本会话 token、估算金额与**实时 TPS**（最近数次请求的生成速度均值，空闲保留最后值）
 - ✅ 权限模式 / 模型·思考强度 / git 分支 / 项目目录
 - ✅ swarm 模式品牌蓝水波动效（约 8 秒）
 - ✅ **后台任务段**：有 running 的后台任务/子 agent 时显示 `⚙ N`，点击打开本地实时任务看板（全会话总览，1s 局部刷新，output/transcript 同源链接可看子代理在干嘛）
-- ✅ **额度提醒 hook**（三端生效）：每条消息把实时额度静默注入上下文（模型随时答得出"还剩多少"）,5h 过半 / 7d 超八成时模型自动在回复末尾亮出 ⏱ 提醒
+- ✅ **额度提醒 hook**（桌面/web 等非 TUI 端；TUI 静默）：每条消息把实时额度静默注入上下文（模型随时答得出"还剩多少"）,5h ≥ 50% / 7d ≥ 80% / mo ≥ 80% 时模型自动在回复末尾亮出 ⏱ 提醒
 - ⚡ 单次运行 < 50ms（token 统计走缓存,TPS 走尾部限量扫描,300ms 预算内）
 
 ## 快速安装
@@ -67,7 +67,7 @@ python3 kimi-quota-statusline/install.py   # Windows: python kimi-quota-statusli
 | 权限模式 | `YOLO` / `AUTO` / `MANUAL`（大写，分色） | 状态栏 stdin 快照 |
 | 模型·思考强度 `[上下文]` | `K3·max [1M]`，强度从当前会话 wire 日志重建 | wire.jsonl |
 | swarm 特效 | 进入时品牌蓝水波双向扩散（~8s），随后静态蓝标 | wire.jsonl `swarm_mode.*` |
-| `5h` / `7d` 额度条 | 6 格进度条 + 已用百分比 + 重置倒计时，绿/黄/红三档 | **官方 `/usages` 接口**（超 10 分钟未更新压暗加 `~`，无数据不显示） |
+| `5h` / `7d` / `mo` 额度条 | 6 格进度条 + 已用百分比 + 重置倒计时，绿/黄/红三档（`mo` 取月度 total 窗口） | **官方 `/usages` 接口**（超 10 分钟未更新压暗加 `~`，无数据不显示） |
 | 本会话消耗 | token 量 + 估算金额 + 实时 TPS（仅当前会话，不含其他会话） | 当前会话 wire.jsonl `usage.record` 聚合 |
 | git 分支 / 项目目录 | ⎇ 分支、目录名 | stdin 快照 |
 
@@ -87,7 +87,8 @@ python3 kimi-quota-statusline/install.py   # Windows: python kimi-quota-statusli
 
 - `tui.toml` 的 `[status_line].command` 指向 `statusline.py`,TUI 每秒以内把 JSON 快照（模型/目录/git/权限/上下文用量/sessionId）喂给它，取 stdout 第一行渲染
 - 思考强度与 swarm 状态：快照没有，从当前会话 `~/.kimi-code/sessions/*/<sessionId>/agents/main/wire.jsonl` 尾部记录重建
-- token/金额：5h/7d 聚合全部会话 wire.jsonl 的 `usage.record`;"会话"段只聚合当前会话的 wire.jsonl（按文件 mtime 增量缓存；重活由 detached 后台进程刷新，状态栏单次运行 <50ms，远低于 300ms 预算）
+- 官方额度：优先读取 `usages.limit_5h` / `limit_7d` / `limit_month_total` 的 `used_ratio` 和 `reset_time`；5h/7d 分别兼容旧 `limits[]` / `usage`。无效窗口独立跳过，有有效旧值则回退；0 用量保留。`mo` 选择 total，不另显示 `limit_month_code`，也不推断两者谁先限制使用。
+- token/金额：只聚合当前会话 wire.jsonl 的 `usage.record`，不用于折算官方额度（按文件 mtime 增量缓存；重活由 detached 后台进程刷新，状态栏单次运行 <50ms，远低于 300ms 预算）
 - 额度百分比：官方 `GET https://api.kimi.com/coding/v1/usages`(Bearer 用本地 OAuth token，与 `/usage` 命令同源，见 kimi-code 仓库 `packages/oauth/src/managed-usage.ts`)；超过 10 分钟未更新压暗加 `~` 过期标记，从未拉到则不显示（本地 token 折算已于 v1.1.2 移除：与官方窗口非线性，校准漂移曾致误显）
 - 动画帧率受 TUI 硬编码的 1 秒重跑间隔限制（`STATUS_LINE_RERUN_INTERVAL_MS`)，可配置化请求见 [issue #2396](https://github.com/MoonshotAI/kimi-code/issues/2396)
 
@@ -116,12 +117,12 @@ When **swarm mode** is entered, a brand-blue (`#4FA8FF`) water ripple spreads ou
 
 ![swarm ripple effect](assets/swarm.gif)
 
-- ✅ `5h` / `7d` official quota bars: 6-cell progress + used % + reset countdown, green/yellow/red
+- ✅ `5h` / `7d` / `mo` official quota bars: 6-cell progress + used % + reset countdown, green/yellow/red (`mo` uses the monthly total window; each window is shown when returned)
 - ✅ Current-session tokens, estimated cost, and **live TPS** (mean generation speed of the last few requests, keeps last value when idle)
 - ✅ Permission mode / model · thinking effort / git branch / directory
 - ✅ Brand-blue water-ripple burst on swarm mode (~8 s)
 - ✅ **Background tasks**: shows `⚙ N` while background tasks/sub-agents are running — click to open a live local task board (all sessions, 1 s in-place refresh, output/transcript links to see what a sub-agent is doing)
-- ✅ **Quota reminder hook** (all surfaces): injects live quota into context on every message (the model can always answer "how much is left"); when 5h ≥ 50% or 7d ≥ 80%, the model appends a ⏱ reminder at the end of its replies
+- ✅ **Quota reminder hook** (desktop/web and other non-TUI surfaces; silent in TUI): injects live quota into context on every message (the model can always answer "how much is left"); when 5h ≥ 50%, 7d ≥ 80%, or mo ≥ 80%, the model appends a ⏱ reminder at the end of its replies
 - ⚡ Runs in < 50 ms (token stats served from cache, within the 300 ms budget)
 
 ## Quick install
@@ -157,7 +158,7 @@ Requirements: Kimi Code CLI ≥ 0.30.0 (the `[status_line]` feature), Python 3, 
 | Permission mode | `YOLO` / `AUTO` / `MANUAL` (uppercase, color-coded) | status line stdin snapshot |
 | Model · effort `[context]` | `K3·max [1M]`; effort rebuilt from the session wire log | `wire.jsonl` |
 | swarm effect | water-ripple burst on entry, then a static brand-blue marker | `wire.jsonl` `swarm_mode.*` |
-| `5h` / `7d` quota bars | 6-cell bar + used % + reset countdown, green/yellow/red | **official `/usages` endpoint** (dimmed with a `~` marker when stale > 10 min; hidden when unavailable) |
+| `5h` / `7d` / `mo` quota bars | 6-cell bar + used % + reset countdown, green/yellow/red (`mo` = monthly total window) | **official `/usages` endpoint** (dimmed with a `~` marker when stale > 10 min; hidden when unavailable) |
 | Current session usage | tokens + estimated cost + live TPS (this session only) | current session's `wire.jsonl` `usage.record` aggregation |
 | git branch / directory | ⎇ branch, basename of cwd | stdin snapshot |
 
@@ -177,7 +178,8 @@ Restores the built-in footer layout.
 
 - `[status_line].command` in `tui.toml` points at `statusline.py`. The TUI pipes a JSON snapshot (model, cwd, git branch, permission/plan mode, context usage, session id, version) on stdin, at most once per second, and renders the first stdout line.
 - Thinking effort and swarm state are not in the snapshot; they are rebuilt from the current session's `~/.kimi-code/sessions/*/<sessionId>/agents/main/wire.jsonl` tail records.
-- Token/cost figures: 5h/7d quota fallback aggregates `usage.record` entries across all session wire logs; the session figure aggregates only the current session's wire log. Cached per file mtime; heavy scans run in a detached refresher so the status line itself stays under ~50 ms (budget: 300 ms).
+- Official quotas: prefer `used_ratio` / `reset_time` in `usages.limit_5h`, `limit_7d`, and `limit_month_total`; fall back independently to legacy `limits[]` / `usage` for 5h/7d. Invalid windows are skipped without losing valid ones, including zero usage. `mo` selects total, not `limit_month_code`; this does not establish which quota binds first.
+- Token/cost figures: aggregate `usage.record` entries only from the current session's wire log; they are never used to estimate official quotas. Cached per file mtime; heavy scans run in a detached refresher so the status line itself stays under ~50 ms (budget: 300 ms).
 - Quota percentages come from the official `GET https://api.kimi.com/coding/v1/usages` (Bearer = local OAuth token — the exact endpoint `/usage` uses, see `packages/oauth/src/managed-usage.ts` in kimi-code). Values older than 10 minutes render dimmed with a `~` stale marker; when no official data has ever been fetched the bars are hidden. (The local token-based fallback was removed in v1.1.2: it is not linear with the official window and its calibration drifted, causing misleading readings.)
 - Animation frame rate is bounded by the TUI's hardcoded 1 s rerun interval (`STATUS_LINE_RERUN_INTERVAL_MS`) — see [issue #2396](https://github.com/MoonshotAI/kimi-code/issues/2396) for the request to make it configurable.
 
@@ -191,3 +193,4 @@ Restores the built-in footer layout.
 [MIT](LICENSE)
 
 </details>
+

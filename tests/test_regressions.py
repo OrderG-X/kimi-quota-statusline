@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """回归测试(无框架,直接 python3 tests/test_regressions.py):
 
-1. 5h/7d 额度条只显示官方数据:过期加 ~ 压暗、本地折算不得再混入、无官方数据不显示
+1. 5h/7d/mo 额度条只显示官方数据:过期加 ~ 压暗、本地折算不得再混入、无官方数据不显示
    (2026-08-09 修复:本地 token 折算与官方窗口非线性,校准漂移导致 5h 误显 90%+)
 2. 长会话 wire.jsonl 中 swarm_mode.enter 跌出尾部 512K 窗口后仍能识别 swarm 状态
    (2026-08-09 修复:session_state 改为自文件尾向前分块扫描)
@@ -544,6 +544,148 @@ check('双 OAuth:缺配置回退老凭据+官方域名',
       _cred.endswith(os.path.join('credentials', 'kimi-code.json'))
       and _url == 'https://api.kimi.com/coding/v1/usages')
 
+# ---------- 国际版月度额度样本(此响应无周配额) ----------
+# 原始响应 usages.limit_month_total 只给 used_ratio(0..1),fetch_official 折算
+# used/limit=1.0,渲染链路与 5h/7d 完全共用;国内账号(usage 周配额)行为不变
+tmp_mo = tempfile.mkdtemp()
+_cred_dir_mo = os.path.join(tmp_mo, 'credentials')
+os.mkdir(_cred_dir_mo)
+json.dump({'access_token': 'TOK_INTL', 'expires_at': time.time() + 600},
+          open(os.path.join(_cred_dir_mo, 'kimi-code.json'), 'w'))
+_old_cdir, _old_cfg_mo = statusline.CRED_DIR, statusline.CONFIG_FILE
+_old_cfile = statusline.CRED_FILE
+statusline.CRED_DIR = _cred_dir_mo
+statusline.CRED_FILE = os.path.join(_cred_dir_mo, 'kimi-code.json')
+statusline.CONFIG_FILE = os.path.join(tmp_mo, '不存在.toml')
+import urllib.request as _ur_mo
+class _RespMo:
+    def read(self):
+        return json.dumps({
+            'limits': [{'window': {'duration': 300, 'timeUnit': 'TIME_UNIT_MINUTE'},
+                        'detail': {'limit': '100', 'used': '15', 'remaining': '85',
+                                   'resetTime': '2026-11-09T14:59:46Z'}}],
+            'usages': {
+                'limit_5h': {'used_ratio': 0.15, 'reset_time': '2026-11-09T14:59:46Z'},
+                'limit_month_total': {'used_ratio': 0.0096, 'reset_time': '2026-12-10T00:00:00Z'},
+                'limit_month_code': {'used_ratio': 0.008, 'reset_time': '2026-12-10T00:00:00Z'}}}).encode()
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+_old_urlopen = _ur_mo.urlopen
+_ur_mo.urlopen = lambda req, timeout=0: _RespMo()
+try:
+    _off_mo = statusline.fetch_official('test')
+finally:
+    _ur_mo.urlopen = _old_urlopen
+    statusline.CRED_DIR, statusline.CONFIG_FILE = _old_cdir, _old_cfg_mo
+    statusline.CRED_FILE = _old_cfile
+check('国际版:解析月度额度 used_ratio 折算',
+      bool(_off_mo) and abs(_off_mo.get('mo_used', 0) - 0.0096) < 1e-9
+      and _off_mo.get('mo_limit') == 1.0
+      and _off_mo.get('mo_reset') == '2026-12-10T00:00:00Z')
+check('国际版:无周配额响应不产生 wk_* 键', bool(_off_mo) and 'wk_used' not in _off_mo)
+check('国际版:5h 窗口照常解析', bool(_off_mo) and _off_mo.get('h5_used') == 0.15 and _off_mo.get('h5_limit') == 1.0)
+
+_mo_reset = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(now + 3 * 86400))
+out = render({'ts': now, 'official': {'ts': now, 'h5_used': 15, 'h5_limit': 100,
+                                      'mo_used': 0.0096, 'mo_limit': 1.0,
+                                      'mo_reset': _mo_reset}})
+check('国际版:渲染月度额度条 mo 1%%', 'mo' in out and '1%' in out)
+
+out = render({'ts': now, 'official': {'ts': now, 'h5_used': 15, 'h5_limit': 100}})
+check('无月度数据:不显示 mo 条', 'mo' not in out)
+
+# ---------- 现代额度 schema:独立容错、优先级、真实配置解析(仅假凭据/模拟 HTTP) ----------
+def fetch_payload(payload, intl=True):
+    old = statusline.CONFIG_FILE, statusline.CRED_DIR, statusline.CRED_FILE, _ur.urlopen
+    statusline.CONFIG_FILE = _cfg if intl else os.path.join(tmp_dual, 'missing.toml')
+    statusline.CRED_DIR = _cred_dir
+    statusline.CRED_FILE = os.path.join(_cred_dir, 'kimi-code.json')
+    class Response:
+        def read(self): return json.dumps(payload).encode()
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+    def urlopen(req, timeout=0):
+        _seen.update(url=req.full_url, auth=req.headers.get('Authorization'))
+        return Response()
+    _ur.urlopen = urlopen
+    try:
+        return statusline.fetch_official('test')
+    finally:
+        statusline.CONFIG_FILE, statusline.CRED_DIR, statusline.CRED_FILE, _ur.urlopen = old
+
+_modern = {'usages': {'limit_5h': {'used_ratio': 0, 'reset_time': 'h'},
+                      'limit_7d': {'used_ratio': '0.23', 'reset_time': 'w'},
+                      'limit_month_total': {'used_ratio': '0.81', 'reset_time': 'm'},
+                      'limit_month_code': {'used_ratio': 0.99}}}
+_parsed = fetch_payload(_modern)
+check('现代独立响应:零用量和数字字符串正常',
+      _parsed and [_parsed.get(k + '_used') for k in ('h5', 'wk', 'mo')] == [0, 0.23, 0.81]
+      and all(_parsed.get(k + '_limit') == 1 for k in ('h5', 'wk', 'mo')))
+check('现代独立响应:三个窗口 reset_time 保留',
+      _parsed and [_parsed.get(k + '_reset') for k in ('h5', 'wk', 'mo')] == ['h', 'w', 'm'])
+check('国际版配置+月度响应:env 凭据与端点同时正确',
+      _seen == {'url': 'https://api.kimi.ai/coding/v1/usages', 'auth': 'Bearer TOK_INTL'}
+      and _parsed.get('mo_used') == 0.81)
+_legacy = {'usage': {'used': '7', 'limit': '100', 'resetTime': 'old-w'},
+           'limits': [{'window': {'duration': 300, 'timeUnit': 'TIME_UNIT_MINUTE'},
+                       'detail': {'used': '15', 'limit': '100', 'resetTime': 'old-h'}}]}
+_parsed = fetch_payload(dict(_legacy, **_modern))
+check('现代有效字段优先旧字段:零不触发回退',
+      _parsed.get('h5_used') == 0 and _parsed.get('wk_used') == 0.23
+      and _parsed.get('h5_reset') == 'h')
+_parsed = fetch_payload(_legacy, intl=False)
+check('国内旧响应:旧凭据/端点/周与5h口径保持',
+      _seen == {'url': 'https://api.kimi.com/coding/v1/usages', 'auth': 'Bearer TOK_LEGACY'}
+      and _parsed.get('h5_used') == 15 and _parsed.get('wk_used') == 7
+      and 'mo_used' not in _parsed)
+for _bad in ('oops', None, True, -0.1, float('nan'), float('inf'), '-Infinity', [], {}):
+    for _key, _prefix in (('limit_5h', 'h5'), ('limit_7d', 'wk'), ('limit_month_total', 'mo')):
+        _payload = json.loads(json.dumps(_modern))
+        _payload['usages'][_key]['used_ratio'] = _bad
+        _parsed = fetch_payload(_payload)
+        check('坏 ratio 独立跳过 %s %r' % (_key, _bad),
+              _parsed and _prefix + '_used' not in _parsed
+              and all(k + '_used' in _parsed for k in ('h5', 'wk', 'mo') if k != _prefix))
+for _bad in ([], 'oops', 1, None):
+    _parsed = fetch_payload(dict(_legacy, usages=_bad))
+    check('坏 usages 映射回退旧窗口 %r' % (_bad,),
+          _parsed and _parsed.get('h5_used') == 15 and _parsed.get('wk_used') == 7)
+    _parsed = fetch_payload({'usages': dict(_modern['usages'], limit_month_total=_bad)})
+    check('坏月度映射不影响其他窗口 %r' % (_bad,),
+          _parsed and 'mo_used' not in _parsed and _parsed.get('wk_used') == 0.23)
+_parsed = fetch_payload(dict(_legacy, usages={'limit_5h': {'used_ratio': 'oops'},
+                                             'limit_7d': [], 'limit_month_total': {'used_ratio': 0}}))
+check('现代窗口坏值逐窗口回退旧值,月度零仍保留',
+      _parsed.get('h5_used') == 15 and _parsed.get('wk_used') == 7 and _parsed.get('mo_used') == 0)
+_parsed = fetch_payload({'usage': [], 'limits': [None, {'window': []}], **_modern})
+check('旧窗口坏映射不影响现代窗口', _parsed and _parsed.get('mo_used') == 0.81)
+for _bad in ('oops', float('nan'), float('inf'), -1, 0, True):
+    _payload = json.loads(json.dumps(_legacy))
+    _payload['usage']['limit'] = _bad
+    _parsed = fetch_payload(_payload)
+    check('旧周额度坏上限不影响5h %r' % (_bad,),
+          _parsed and 'wk_used' not in _parsed and _parsed.get('h5_used') == 15)
+check('没有有效窗口返回 None', fetch_payload({'usages': {'limit_month_total': {'used_ratio': 'nan'}}}) is None)
+check('仅 month_code 不冒充 total', fetch_payload({'usages': {'limit_month_code': {'used_ratio': 0.9}}}) is None)
+_parsed = fetch_payload({'usages': {'limit_month_total': {'used_ratio': 1.2, 'reset_time': []}}})
+check('超额 ratio 保留且坏倒计时不影响额度', _parsed.get('mo_used') == 1.2 and _parsed.get('mo_reset') == '')
+
+# 固定时钟验证月度新鲜/过期/零用量与倒计时,避免临界秒误差。
+_old_time = statusline.time.time
+_fixed_now = int(now)
+statusline.time.time = lambda: _fixed_now
+try:
+    _monthly = {'mo_used': 0.81, 'mo_limit': 1,
+                'mo_reset': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(_fixed_now + 3 * 86400))}
+    _fresh = render({'ts': now, 'official': dict(_monthly, ts=now)})
+    _stale = render({'ts': now, 'official': dict(_monthly, ts=now - 601)})
+    _zero = render({'ts': now, 'official': {'ts': now, 'mo_used': 0, 'mo_limit': 1}})
+finally:
+    statusline.time.time = _old_time
+check('月度新鲜显示81%与倒计时', '81%' in _fresh and '~81%' not in _fresh and '3d0h' in _fresh)
+check('月度过期显示~81%且保留倒计时', '~81%' in _stale and '3d0h' in _stale)
+check('月度零用量显示0%', 'mo' in _zero and '0%' in _zero)
+
 # ---------- 后台任务段:当前会话有 running 任务/子 agent 才显示,⚙ N 可点击打开看板 ----------
 tmp_bg = tempfile.mkdtemp()
 statusline.SESSIONS = tmp_bg
@@ -748,6 +890,14 @@ _h = run_hook({'ts': now, 'official': {'ts': now, 'h5_used': 16, 'h5_limit': 100
               '{}')
 check('hook:无 client_type(未知端)默认注入', '⏱ 5h 16%' in _h)
 
+for _ratio in (0, 0.79, 0.8, 0.95):
+    _cache = {'ts': now, 'official': {'ts': now, 'mo_used': _ratio, 'mo_limit': 1}}
+    _h = run_hook(_cache)
+    check('hook:仅月度额度阈值 %s' % _ratio,
+          ('mo %s%%' % round(_ratio * 100)) in _h and ('原样附上' in _h) == (_ratio >= 0.8))
+    check('hook:TUI 月度水位始终静默 %s' % _ratio,
+          run_hook(_cache, '{"client_type":"kimi_code_cli"}') == '')
+
 # install.patch_managed_hook:Windows 无 python3 时把托管 manifest 的 hook 解释器换绝对路径
 _mdir = tempfile.mkdtemp()
 _mf = os.path.join(_mdir, 'kimi.plugin.json')
@@ -763,3 +913,4 @@ if FAILED:
     print(f'{len(FAILED)} 个用例失败')
     sys.exit(1)
 print('全部通过')
+

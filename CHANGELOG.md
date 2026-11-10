@@ -2,6 +2,17 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [1.6.2] - 2026-11-09
+
+### Added
+- **月度额度条**:解析 `usages.limit_month_total` 的 `used_ratio`，以 `mo` 显示已用比例和重置倒计时；选择 total，不另显示 month_code，也不推断两者哪个先约束使用。
+- **月度提醒**:非 TUI 端月度用量 ≥80% 时附回显指令；TUI 继续静默。
+
+### Fixed
+- 现代 `usages.limit_5h` / `limit_7d` ratio 字段优先，逐窗口回退旧 `limits[]` / `usage`，保留国内旧响应、零用量与国际版 env 凭据解析。
+- 无效映射、坏数值、NaN/Infinity 等独立跳过，不再让坏月度数据丢掉有效 5h/7d 额度。
+- 同步中英文说明、插件描述与维护文档；回归测试总计 149 项(完整回归脚本，无真实凭据或 API 请求)。
+
 ## [1.6.1] - 2026-09-18
 
 ### Changed
@@ -97,3 +108,4 @@
 - 首个版本:权限模式 / 模型·思考强度 [上下文规格] / 5h·7d 额度条 / 今日 token 与金额 / git·目录
 - 数据通道:TUI stdin JSON 快照 + 会话 wire.jsonl 重建 + 官方 usages 接口
 - 安装/卸载脚本(install.sh / uninstall.sh,自动备份 + kimi doctor 校验)与插件斜杠命令
+
