@@ -1,0 +1,68 @@
+name: Publish v1.6.2
+run-name: Publish v1.6.2 from verified main commit
+on:
+  push:
+    branches: [release/publish-v1.6.2]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-kimi-quota-statusline-v1.6.2
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'OrderG-X/kimi-quota-statusline' && github.ref == 'refs/heads/release/publish-v1.6.2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: OrderG-X/kimi-quota-statusline
+      RELEASE_SHA: 9c51fe10f4a8a095e337b0ea5df294bc5ab68fe6
+      TAG: v1.6.2
+    steps:
+      - name: Verify release target and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          main_sha=$(gh api "repos/$GH_REPO/branches/main" --jq .commit.sha)
+          test "$main_sha" = "$RELEASE_SHA"
+          version=$(gh api "repos/$GH_REPO/contents/kimi.plugin.json?ref=$RELEASE_SHA" --jq .content | base64 --decode | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+          test "v$version" = "$TAG"
+          conclusion=$(gh api "repos/$GH_REPO/actions/runs/42777205829" --jq .conclusion)
+          tested_sha=$(gh api "repos/$GH_REPO/actions/runs/42777205829" --jq .head_sha)
+          test "$conclusion" = success
+          test "$tested_sha" = "$RELEASE_SHA"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already exists; inspect it before retrying."
+            exit 1
+          fi
+          if gh api "repos/$GH_REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag already exists; inspect it before retrying."
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          ## 新增与修复
+          - 新增月度 total 额度条 mo，显示已用比例与重置倒计时。感谢 @JustGAST 的原始贡献 #2。
+          - 支持新版 usages.limit_5h / limit_7d / limit_month_total，并逐窗口兼容旧响应。
+          - 隔离无效字段、NaN 和 Infinity，避免异常月度数据影响其他有效额度。
+          - 非 TUI 端月度用量达到 80% 时提示；TUI 继续保持静默。
+          - 同步中英文说明、插件描述与维护文档。
+
+          ## 安装与升级
+          已安装用户重新运行：
+          `/plugins install https://github.com/OrderG-X/kimi-quota-statusline`
+          然后运行 `/reload`（或 `/new`）加载更新。首次安装还需运行 `/kimi-quota-statusline:install` 接管状态栏。
+
+          ## 验证
+          149 项回归通过，Ubuntu、macOS、Windows CI 全绿，包含安装/卸载与 Windows 路径检查。
+          合并后验证：https://github.com/OrderG-X/kimi-quota-statusline/actions/runs/42777205829
+
+          本次发布未使用真实国际账号再次请求 API；接口兼容性通过隔离配置、响应样本与上游实现验证。
+
+          发布提交：9c51fe10f4a8a095e337b0ea5df294bc5ab68fe6
+          集成变更：#3（保留 #2 原作者提交）。
+          NOTES
+          gh release create "$TAG" --repo "$GH_REPO" --target "$RELEASE_SHA" --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --latest
+          tag_sha=$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq .object.sha)
+          test "$tag_sha" = "$RELEASE_SHA"
+          gh release view "$TAG" --repo "$GH_REPO" --json url,tagName,isDraft,isPrerelease,publishedAt
